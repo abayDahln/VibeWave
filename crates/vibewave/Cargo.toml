@@ -1,0 +1,61 @@
+[package]
+name = "vibewave"
+description = "VibeWave Windows binary: edge-glow overlay (native Win32 + DirectComposition) and WASAPI loopback capture."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+vibewave-core = { path = "../vibewave-core" }
+
+# Approved 2026-11-04 (research R-1: Tauri enters at the settings-window
+# feature; spike S-1b validated the overlay inside a Tauri process). MIT OR
+# Apache-2.0. Used only to host the settings window (FR-15/FR-17).
+# `tray-icon` (approved 2026-11-05) enables the tray menu (FR-14); its crates
+# (`tray-icon`, `muda`) were already in Cargo.lock.
+tauri = { version = "2.12.5", features = ["tray-icon"] }
+
+# Already a transitive dependency of tauri; declared directly for the settings
+# DTO's `#[derive(Serialize)]`.
+serde = { version = "1", features = ["derive"] }
+
+# Windows API surface: overlay (Direct2D/DirectComposition/Dxgi), audio
+# (WASAPI), timing (QPC), and window messages.
+[dependencies.windows]
+version = "0.62.2"
+features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Graphics_Imaging",
+    "Media_Control",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_Audio",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Performance",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+# Already a transitive dependency of `windows`; used directly for D2D point types.
+[dependencies.windows-numerics]
+version = "0.3.1"
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }

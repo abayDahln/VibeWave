@@ -1,0 +1,19 @@
+[package]
+name = "s3-media"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# S-3: Windows Media Session (GlobalSystemMediaTransportControls).
+# Validates: current session per Windows, all sessions, thumbnail read and
+# decode cost, image-hash change detection, change events, failure modes.
+[dependencies.windows]
+version = "0.62.2"
+features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Graphics_Imaging",
+    "Media_Control",
+    "Storage_Streams",
+    "Win32_System_Com",
+]

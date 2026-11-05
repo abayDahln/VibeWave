@@ -1,0 +1,29 @@
+[package]
+name = "s1-overlay"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# S-1a: native Win32 overlay (transparent, topmost, click-through, no focus,
+# hidden from taskbar/Alt+Tab) rendered with D3D11 + Direct2D + DirectComposition.
+# Only the API surface needed for that hypothesis.
+[dependencies.windows]
+version = "0.62.2"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+# Already a transitive dependency of `windows`; needed directly for D2D point types.
+[dependencies.windows-numerics]
+version = "0.3.1"

@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "S-1b spike: no permissions granted to the settings webview.",
+  "windows": ["settings"],
+  "permissions": []
+}

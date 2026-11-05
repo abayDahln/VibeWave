@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VibeWave Settings</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #202020;
+        --card: #2b2b2b;
+        --card-hover: #323232;
+        --stroke: #3a3a3a;
+        --text: #ffffff;
+        --text-secondary: #c8c8c8;
+        --text-tertiary: #9a9a9a;
+        --accent: #4cc2ff;
+        --toggle-off: #5c5c5c;
+        --toggle-knob: #f5f5f5;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+        font-size: 14px;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .page {
+        padding: 24px 28px 32px;
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 28px;
+        font-weight: 600;
+        margin: 4px 0 24px;
+      }
+      .group {
+        margin-bottom: 22px;
+      }
+      .group-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin: 0 0 8px 2px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--stroke);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 16px;
+        min-height: 56px;
+        border-bottom: 1px solid var(--stroke);
+      }
+      .row:last-child {
+        border-bottom: none;
+      }
+      .row.clickable {
+        cursor: pointer;
+      }
+      .row.clickable:hover {
+        background: var(--card-hover);
+      }
+      .row.disabled {
+        opacity: 0.5;
+      }
+      .ico {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 20px;
+        stroke: var(--text-secondary);
+        fill: none;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .labels {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .labels .title {
+        line-height: 1.3;
+      }
+      .labels .sub {
+        font-size: 12px;
+        color: var(--text-tertiary);
+        line-height: 1.3;
+      }
+      .control {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      select {
+        font: inherit;
+        color: var(--text);
+        background: #323232;
+        border: 1px solid var(--stroke);
+        border-radius: 5px;
+        padding: 6px 10px;
+        min-width: 150px;
+      }
+      select:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+      }
+      /* Toggle switch, Windows 11 style. */
+      .toggle {
+        position: relative;
+        width: 40px;
+        height: 20px;
+        flex: 0 0 40px;
+      }
+      .toggle input {
+        position: absolute;
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        cursor: pointer;
+      }
+      .toggle .track {
+        position: absolute;
+        inset: 0;
+        border-radius: 10px;
+        background: var(--toggle-off);
+        transition: background 0.15s ease;
+      }
+      .toggle .knob {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--toggle-knob);
+        transition: transform 0.15s ease;
+      }
+      .toggle input:checked ~ .track {
+        background: var(--accent);
+      }
+      .toggle input:checked ~ .knob {
+        transform: translateX(20px);
+      }
+      .toggle input:focus-visible ~ .track {
+        outline: 2px solid var(--text);
+        outline-offset: 2px;
+      }
+      .toggle .state {
+        position: absolute;
+        left: 48px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 13px;
+        color: var(--text-secondary);
+        pointer-events: none;
+      }
+      .row.toggle-row .control {
+        gap: 34px;
+      }
+      .badge {
+        font-size: 12px;
+        color: var(--text-tertiary);
+        background: #3a3a3a;
+        border-radius: 4px;
+        padding: 3px 8px;
+      }
+      input[type="color"] {
+        width: 40px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid var(--stroke);
+        border-radius: 5px;
+        background: none;
+        cursor: pointer;
+      }
+      input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 2px;
+      }
+      input[type="color"]::-webkit-color-swatch {
+        border: none;
+        border-radius: 3px;
+      }
+      .swatch {
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        border: 1px solid var(--stroke);
+        flex: 0 0 auto;
+      }
+      .range {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      input[type="range"] {
+        width: 150px;
+        accent-color: var(--accent);
+      }
+      .range .value {
+        width: 40px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        color: var(--text-secondary);
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--text-tertiary);
+        margin: 6px 2px 0;
+      }
+      .btn {
+        font: inherit;
+        color: var(--text);
+        background: #3a3a3a;
+        border: 1px solid #4a4a4a;
+        border-radius: 5px;
+        padding: 6px 18px;
+        cursor: pointer;
+      }
+      .btn:hover {
+        background: #454545;
+      }
+      .btn:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      .chev {
+        width: 14px;
+        height: 14px;
+        stroke: var(--text-secondary);
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Settings</h1>
+
+      <div class="group">
+        <div class="group-title">General</div>
+        <div class="card">
+          <div class="row toggle-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M12 3v8" />
+              <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
+            </svg>
+            <div class="labels">
+              <div class="title">Glow on</div>
+              <div class="sub">Turn the glow off without closing VibeWave</div>
+            </div>
+            <div class="control">
+              <label class="toggle">
+                <input type="checkbox" id="active" />
+                <span class="track"></span>
+                <span class="knob"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="row toggle-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M3 9h18M8 14l2 2 4-4" />
+            </svg>
+            <div class="labels">
+              <div class="title">Run on startup</div>
+              <div class="sub">Start VibeWave automatically when you sign in to Windows</div>
+            </div>
+            <div class="control">
+              <label class="toggle">
+                <input type="checkbox" id="autostart" />
+                <span class="track"></span>
+                <span class="knob"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="row toggle-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <rect x="3" y="15" width="18" height="5" rx="1" />
+              <rect x="15" y="16.5" width="3" height="2" rx="0.5" />
+              <path d="M12 4v7M9 8l3 3 3-3" />
+            </svg>
+            <div class="labels">
+              <div class="title">Show tray icon</div>
+              <div class="sub">When hidden, launch VibeWave again to reopen this window</div>
+            </div>
+            <div class="control">
+              <label class="toggle">
+                <input type="checkbox" id="show-tray" />
+                <span class="track"></span>
+                <span class="knob"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+              <path d="M10 8l-4 4 4 4M6 12h9" />
+            </svg>
+            <div class="labels">
+              <div class="title">Exit VibeWave</div>
+              <div class="sub">Stop the glow and remove the tray icon. Settings are kept</div>
+            </div>
+            <div class="control">
+              <button id="quit" class="btn">Exit</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Theme</div>
+        <div class="card">
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M8 17V9M12 17V6M16 17v-5" />
+            </svg>
+            <div class="labels">
+              <div class="title">Visual theme</div>
+              <div class="sub" id="theme-sub">The neon glow that frames the screen</div>
+            </div>
+            <div class="control">
+              <select id="theme">
+                <option value="glow">Glow</option>
+                <option value="bars">Spectrum bars</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Appearance</div>
+        <div class="card">
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 3a9 9 0 0 0 0 18" />
+              <path d="M12 7a5 5 0 0 0 0 10" />
+            </svg>
+            <div class="labels">
+              <div class="title">Colour source</div>
+              <div class="sub" id="color-source-sub">Follow the playing track's cover art</div>
+            </div>
+            <div class="control">
+              <select id="color-mode">
+                <option value="cover">Cover art</option>
+                <option value="custom">Custom colour</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row" id="custom-color-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h1.5A4.5 4.5 0 0 0 21 10c0-3.9-4-7-9-7Z" />
+              <circle cx="7.5" cy="11.5" r="1" />
+              <circle cx="10" cy="7.5" r="1" />
+              <circle cx="14.5" cy="7.5" r="1" />
+            </svg>
+            <div class="labels">
+              <div class="title">Custom colour</div>
+              <div class="sub" id="custom-color-sub">Used when cover art is unavailable</div>
+            </div>
+            <div class="control">
+              <input type="color" id="custom-color" />
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
+            <div class="labels">
+              <div class="title">Active colour</div>
+              <div class="sub" id="active-color-sub">Currently painted</div>
+            </div>
+            <div class="control">
+              <div class="swatch" id="active-swatch"></div>
+              <span class="value" id="active-hex" style="color: var(--text-secondary)"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Motion</div>
+        <div class="card">
+          <div class="row" id="direction-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M4 12a8 8 0 0 1 16 0" />
+              <path d="M20 12l-2.5-1.5M20 12l-2.5 1.5" />
+            </svg>
+            <div class="labels">
+              <div class="title">Direction</div>
+              <div class="sub">Which way the glow travels around the screen</div>
+            </div>
+            <div class="control">
+              <select id="direction">
+                <option value="cw">Clockwise</option>
+                <option value="ccw">Counter-clockwise</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row" id="thickness-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M4 8h16M4 16h16" />
+              <path d="M8 5v6M16 13v6" />
+            </svg>
+            <div class="labels">
+              <div class="title">Thickness</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="thickness" min="4" max="96" step="1" />
+              <span class="value" id="thickness-val"></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
+            </svg>
+            <div class="labels">
+              <div class="title">Intensity</div>
+              <div class="sub" id="intensity-sub">Overall brightness of the glow</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="intensity" min="0" max="2" step="0.05" />
+              <span class="value" id="intensity-val"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group" id="bars-group">
+        <div class="group-title">Bars theme</div>
+        <div class="card">
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M3 5h18M3 19h18M5 5v14M19 5v14" />
+            </svg>
+            <div class="labels">
+              <div class="title">Position</div>
+              <div class="sub">Which edges carry bars</div>
+            </div>
+            <div class="control">
+              <select id="bars-position">
+                <option value="all">All edges</option>
+                <option value="horizontal">Top &amp; bottom</option>
+                <option value="vertical">Left &amp; right</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M4 8h16M4 16h16" />
+              <path d="M8 5v6M16 13v6" />
+            </svg>
+            <div class="labels">
+              <div class="title">Bar thickness</div>
+              <div class="sub">Thicker bars means fewer of them</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="bars-thickness" min="1" max="24" step="1" />
+              <span class="value" id="bars-thickness-val"></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M12 21V8" />
+              <path d="M8 12l4-4 4 4" />
+              <path d="M4 21h16" />
+            </svg>
+            <div class="labels">
+              <div class="title">Bar height</div>
+              <div class="sub">Tallest a bar can reach at full level</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="bars-maxlen" min="5" max="60" step="1" />
+              <span class="value" id="bars-maxlen-val"></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M4 12h4l2-5 4 10 2-5h4" />
+            </svg>
+            <div class="labels">
+              <div class="title">Beat response</div>
+              <div class="sub">How strongly bar height follows the beat</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="bars-beat" min="0.1" max="3" step="0.05" />
+              <span class="value" id="bars-beat-val"></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M4 20h16" />
+              <path d="M6 20V12M10 20V8M14 20V14M18 20V10" />
+            </svg>
+            <div class="labels">
+              <div class="title">Baseline</div>
+              <div class="sub">Gap between the edge and the bar base; low values overhang outward</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="bars-floor" min="-10" max="35" step="1" />
+              <span class="value" id="bars-floor-val"></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M3 12h18" />
+              <path d="M7 8v8M12 5v14M17 8v8" />
+            </svg>
+            <div class="labels">
+              <div class="title">Center bias</div>
+              <div class="sub">Middle of each edge reacts most; 0 = every bar reacts equally</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="bars-center" min="0" max="1" step="0.05" />
+              <span class="value" id="bars-center-val"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Display</div>
+        <div class="card">
+          <div class="row toggle-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M3 16h18" />
+            </svg>
+            <div class="labels">
+              <div class="title">Show over taskbar</div>
+              <div class="sub">Draw the glow across the taskbar area</div>
+            </div>
+            <div class="control">
+              <label class="toggle">
+                <input type="checkbox" id="over-taskbar" />
+                <span class="track"></span>
+                <span class="knob"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="row toggle-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="14" rx="2" />
+              <path d="M9 20h6" />
+            </svg>
+            <div class="labels">
+              <div class="title">Stay visible in fullscreen</div>
+              <div class="sub">Off: the glow hides while a fullscreen app (video, game) covers the monitor</div>
+            </div>
+            <div class="control">
+              <label class="toggle">
+                <input type="checkbox" id="stay-visible" />
+                <span class="track"></span>
+                <span class="knob"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <rect x="2" y="5" width="12" height="9" rx="1.5" />
+              <rect x="14" y="8" width="8" height="7" rx="1.5" />
+              <path d="M6 18h4M8 14v4" />
+            </svg>
+            <div class="labels">
+              <div class="title">Monitor</div>
+              <div class="sub">Which screen shows the glow</div>
+            </div>
+            <div class="control">
+              <select id="monitor"></select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Audio</div>
+        <div class="card">
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M4 14a8 8 0 0 1 16 0" />
+              <path d="M12 14v6" />
+            </svg>
+            <div class="labels">
+              <div class="title">Sensitivity</div>
+              <div class="sub">How strongly the glow reacts</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="sensitivity" min="0.25" max="3" step="0.05" />
+              <span class="value" id="sensitivity-val"></span>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <path d="M4 12h4l2-5 4 10 2-5h4" />
+            </svg>
+            <div class="labels">
+              <div class="title">Character</div>
+              <div class="sub" id="character-sub">Soft (smooth, slow) to rough (sharp, fast)</div>
+            </div>
+            <div class="control range">
+              <input type="range" id="character" min="0" max="1" step="0.05" />
+              <span class="value" id="character-val"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="hint">Changes apply to the glow immediately. The tray menu (right-click the icon) shows the same switches.</p>
+    </div>
+
+    <script>
+      const { invoke } = window.__TAURI__.core;
+      const $ = (id) => document.getElementById(id);
+
+      function isHex(v) {
+        return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
+      }
+
+      function paint(dto) {
+        $("direction").value = dto.direction;
+        $("color-mode").value = dto.color_mode;
+        $("thickness").value = dto.thickness_px;
+        $("thickness-val").textContent = Math.round(dto.thickness_px);
+        $("intensity").value = dto.intensity;
+        $("intensity-val").textContent = Number(dto.intensity).toFixed(2);
+        $("sensitivity").value = dto.sensitivity;
+        $("sensitivity-val").textContent = Number(dto.sensitivity).toFixed(2);
+        $("over-taskbar").checked = dto.over_taskbar;
+        $("stay-visible").checked = dto.stay_visible_fullscreen;
+        $("character").value = dto.character;
+        $("character-val").textContent = Number(dto.character).toFixed(2);
+        $("monitor").value = String(dto.monitor);
+        $("active").checked = dto.active;
+        $("autostart").checked = dto.autostart;
+        $("show-tray").checked = dto.show_tray_icon;
+        $("theme").value = dto.theme;
+        $("bars-position").value = dto.bars_position;
+        $("bars-thickness").value = dto.bars_thickness_px;
+        $("bars-thickness-val").textContent = Math.round(dto.bars_thickness_px) + "px";
+        $("bars-maxlen").value = Math.round(dto.bars_max_len_frac * 100);
+        $("bars-maxlen-val").textContent = Math.round(dto.bars_max_len_frac * 100) + "%";
+        $("bars-beat").value = dto.bars_beat_response;
+        $("bars-beat-val").textContent = Number(dto.bars_beat_response).toFixed(2);
+        $("bars-floor").value = Math.round(dto.bars_floor_frac * 100);
+        $("bars-floor-val").textContent = Math.round(dto.bars_floor_frac * 100) + "%";
+        $("bars-center").value = dto.bars_center_profile;
+        $("bars-center-val").textContent = Number(dto.bars_center_profile).toFixed(2);
+        // Show the theme's own settings; hide the other theme's. Intensity is
+        // shared (glow brightness / bar opacity), so only the glow-only rows go.
+        const bars = dto.theme === "bars";
+        $("bars-group").style.display = bars ? "" : "none";
+        $("direction-row").style.display = bars ? "none" : "";
+        $("thickness-row").style.display = bars ? "none" : "";
+        $("intensity-sub").textContent = bars
+          ? "Opacity of the bars"
+          : "Overall brightness of the glow";
+        $("theme-sub").textContent = bars
+          ? "Spectrum bars growing inward from the screen edges"
+          : "The neon glow that frames the screen";
+        if (isHex(dto.custom_color)) $("custom-color").value = dto.custom_color;
+        if (isHex(dto.active_color)) {
+          $("active-swatch").style.background = dto.active_color;
+          $("active-hex").textContent = dto.active_color.toUpperCase();
+        }
+        $("color-source-sub").textContent = dto.active_from_cover
+          ? "Following the playing track's cover art"
+          : "No cover art \u2014 using the fallback colour";
+        $("custom-color-row").classList.toggle("disabled", dto.color_mode !== "custom");
+      }
+
+      // Monitor list. Rebuilt only when it changes (plugged/unplugged), so
+      // an open dropdown is not closed by the periodic refresh.
+      let monitorsKey = "";
+      async function loadMonitors() {
+        const list = await invoke("list_monitors");
+        const key = JSON.stringify(list);
+        if (key === monitorsKey) return;
+        monitorsKey = key;
+        const sel = $("monitor");
+        const keep = sel.value;
+        sel.replaceChildren(
+          ...list.map((m) => {
+            const o = document.createElement("option");
+            o.value = String(m.number);
+            o.textContent = m.label;
+            return o;
+          })
+        );
+        sel.value = keep;
+      }
+
+      async function refresh() {
+        await loadMonitors();
+        paint(await invoke("get_settings"));
+      }
+
+      $("direction").addEventListener("change", (e) => {
+        invoke("set_direction", { direction: e.target.value });
+      });
+      $("color-mode").addEventListener("change", (e) => {
+        invoke("set_color_mode", { mode: e.target.value }).then(refresh);
+      });
+      $("custom-color").addEventListener("input", (e) => {
+        invoke("set_custom_color", { hex: e.target.value }).then(refresh);
+      });
+      const thickness = $("thickness");
+      thickness.addEventListener("input", () => {
+        $("thickness-val").textContent = thickness.value;
+        invoke("set_thickness", { px: Number(thickness.value) });
+      });
+      const intensity = $("intensity");
+      intensity.addEventListener("input", () => {
+        $("intensity-val").textContent = Number(intensity.value).toFixed(2);
+        invoke("set_intensity", { value: Number(intensity.value) });
+      });
+      $("over-taskbar").addEventListener("change", (e) => {
+        invoke("set_over_taskbar", { on: e.target.checked });
+      });
+      const sensitivity = $("sensitivity");
+      sensitivity.addEventListener("input", () => {
+        $("sensitivity-val").textContent = Number(sensitivity.value).toFixed(2);
+        invoke("set_sensitivity", { value: Number(sensitivity.value) });
+      });
+      const character = $("character");
+      character.addEventListener("input", () => {
+        $("character-val").textContent = Number(character.value).toFixed(2);
+        invoke("set_character", { value: Number(character.value) });
+      });
+      $("stay-visible").addEventListener("change", (e) => {
+        invoke("set_stay_visible_fullscreen", { on: e.target.checked });
+      });
+      $("theme").addEventListener("change", (e) => {
+        invoke("set_theme", { theme: e.target.value }).then(refresh);
+      });
+      $("bars-position").addEventListener("change", (e) => {
+        invoke("set_bars_position", { position: e.target.value });
+      });
+      const barsThickness = $("bars-thickness");
+      barsThickness.addEventListener("input", () => {
+        $("bars-thickness-val").textContent = barsThickness.value + "px";
+        invoke("set_bars_thickness", { px: Number(barsThickness.value) });
+      });
+      const barsMaxLen = $("bars-maxlen");
+      barsMaxLen.addEventListener("input", () => {
+        $("bars-maxlen-val").textContent = barsMaxLen.value + "%";
+        invoke("set_bars_max_len_frac", { value: Number(barsMaxLen.value) / 100 });
+      });
+      const barsBeat = $("bars-beat");
+      barsBeat.addEventListener("input", () => {
+        $("bars-beat-val").textContent = Number(barsBeat.value).toFixed(2);
+        invoke("set_bars_beat_response", { value: Number(barsBeat.value) });
+      });
+      const barsFloor = $("bars-floor");
+      barsFloor.addEventListener("input", () => {
+        $("bars-floor-val").textContent = barsFloor.value + "%";
+        invoke("set_bars_floor_frac", { value: Number(barsFloor.value) / 100 });
+      });
+      const barsCenter = $("bars-center");
+      barsCenter.addEventListener("input", () => {
+        $("bars-center-val").textContent = Number(barsCenter.value).toFixed(2);
+        invoke("set_bars_center_profile", { value: Number(barsCenter.value) });
+      });
+      $("monitor").addEventListener("change", (e) => {
+        invoke("set_monitor", { number: Number(e.target.value) });
+      });
+      $("active").addEventListener("change", (e) => {
+        invoke("set_active", { on: e.target.checked });
+      });
+      $("autostart").addEventListener("change", (e) => {
+        // On a registry error, repaint so the toggle shows the real state.
+        invoke("set_autostart", { on: e.target.checked }).catch((err) => {
+          console.error(err);
+          refresh();
+        });
+      });
+      $("show-tray").addEventListener("change", (e) => {
+        invoke("set_show_tray_icon", { on: e.target.checked });
+      });
+      $("quit").addEventListener("click", () => {
+        invoke("quit_app");
+      });
+
+      // Persist when a control is committed (slider released, option picked),
+      // not on every slider tick (FR-16). `input` handlers above run first, so
+      // the backend already holds the new value. Events bubble to document.
+      document.addEventListener("change", () => {
+        invoke("save_settings").catch((e) => console.error(e));
+      });
+
+      refresh();
+      // The active colour can change on its own when a track changes, so poll.
+      setInterval(refresh, 2000);
+    </script>
+  </body>
+</html>

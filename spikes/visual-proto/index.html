@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VibeWave — Prototipe Visual Bar-Frame</title>
+<style>
+  :root{
+    --bg:#0b0d12;
+    --panel:#141821;
+    --panel-2:#1b2130;
+    --line:#2a3244;
+    --txt:#e6ebf5;
+    --muted:#8b97ad;
+    --accent:#6ea8ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--txt);
+    font:14px/1.45 "Segoe UI",system-ui,sans-serif;
+    min-height:100vh;
+  }
+  header{
+    position:sticky;top:0;z-index:50;
+    background:rgba(11,13,18,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+    padding:12px 18px;
+  }
+  .hrow{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
+  h1 span{color:var(--muted);font-weight:400;font-size:12px}
+  .drop{
+    border:1px dashed var(--line);border-radius:8px;
+    padding:6px 12px;color:var(--muted);cursor:pointer;
+    transition:.15s;font-size:12px;
+  }
+  .drop:hover,.drop.over{border-color:var(--accent);color:var(--accent);background:rgba(110,168,255,.06)}
+  button{
+    background:var(--panel-2);color:var(--txt);border:1px solid var(--line);
+    border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit;font-size:12px;
+  }
+  button:hover{border-color:var(--accent)}
+  button.on{background:var(--accent);color:#06101f;border-color:var(--accent);font-weight:600}
+  .tabs{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .controls{
+    display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;
+    padding-top:10px;border-top:1px solid var(--line);
+  }
+  .ctl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .ctl input[type=range]{width:110px;accent-color:var(--accent)}
+  .ctl input[type=color]{
+    width:34px;height:24px;padding:0;border:1px solid var(--line);
+    border-radius:6px;background:var(--panel-2);cursor:pointer;
+  }
+  .ctl b{color:var(--txt);font-variant-numeric:tabular-nums;min-width:34px;display:inline-block;text-align:right}
+  .bands{display:flex;gap:10px;font-size:11px;color:var(--muted);margin-top:8px}
+  .band{display:flex;align-items:center;gap:6px}
+  .bar{width:90px;height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0%;background:var(--accent);transition:width .05s linear}
+  .state{font-size:11px;color:var(--muted);margin-left:auto}
+  .state b{color:var(--txt)}
+
+  main{padding:18px}
+  .grid{
+    display:grid;gap:18px;
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  }
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    overflow:hidden;display:flex;flex-direction:column;
+  }
+  .cardhead{
+    display:flex;align-items:center;gap:8px;
+    padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel-2);
+  }
+  .cardhead h2{font-size:12px;margin:0;font-weight:600;flex:1}
+  .cardhead .tag{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .stage{
+    position:relative;flex:1;min-height:200px;
+    background:#05070b;
+    /* kotak tengah yang sengaja gelap: meniru "area tengah transparan" */
+  }
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .stage .hint{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#3d4759;font-size:11px;text-align:center;padding:20px;pointer-events:none;
+  }
+  .carddesc{padding:8px 10px;font-size:11px;color:var(--muted);border-top:1px solid var(--line)}
+
+  /* Fullscreen single-variation view (meniru produk asli: frame di 4 tepi layar) */
+  .fs{
+    position:fixed;inset:0;z-index:100;background:#05070b;display:none;
+  }
+  .fs.on{display:block}
+  .fs canvas{position:absolute;inset:0;width:100%;height:100%}
+  .fs .fshint{
+    position:absolute;left:50%;top:14px;transform:translateX(-50%);
+    color:#3d4759;font-size:12px;pointer-events:none;
+  }
+  .fs .fsclose{
+    position:absolute;right:14px;top:14px;z-index:2;
+  }
+  .note{
+    margin:0 18px 24px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel);color:var(--muted);font-size:12px;
+  }
+  .note b{color:var(--txt)}
+  code{background:var(--panel-2);padding:1px 5px;border-radius:4px;font-size:11px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <h1>VibeWave <span>— prototipe visual bar-frame</span></h1>
+    <button id="playBtn" disabled>▶ Putar</button>
+    <label class="drop" id="drop">＋ pilih / seret file audio…</label>
+    <input type="file" id="file" accept="audio/*" hidden>
+    <button id="simBtn" class="on">Simulasi: ON</button>
+    <span class="state" id="state">keadaan: <b>Active</b></span>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="controls">
+    <label class="ctl">ketebalan <input type="range" id="thick" min="1" max="12" value="3"><b id="thickV">3</b>px</label>
+    <label class="ctl">garis dasar <input type="range" id="floor" min="0" max="100" value="49"><b id="floorV">49%</b></label>
+    <label class="ctl">intensitas <input type="range" id="inten" min="20" max="200" value="100"><b id="intenV">1.0</b></label>
+    <label class="ctl">tengah <input type="range" id="center" min="0" max="90" value="60"><b id="centerV">0.60</b></label>
+    <label class="ctl">warna <input type="color" id="color" value="#f2f2f2"><b id="colorV" style="min-width:70px">#f2f2f2</b></label>
+    <label class="ctl">hue <input type="range" id="hue" min="0" max="360" value="0"><b id="hueV">0</b>°</label>
+    <button id="whiteBtn">Putih (faithful)</button>
+  </div>
+
+  <div class="bands">
+    <div class="band">bass <div class="bar"><i id="bBass"></i></div></div>
+    <div class="band">mid <div class="bar"><i id="bMid"></i></div></div>
+    <div class="band">treble <div class="bar"><i id="bTreb"></i></div></div>
+    <div class="band" id="srcInfo" style="color:#5b6478"></div>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="grid"></div>
+</main>
+
+<div class="note">
+  <b>Catatan:</b> prototipe ini memakai Canvas 2D di browser untuk mengeksplorasi <i>tampilan</i>.
+  Render asli di produksi memakai Direct2D + DirectComposition.
+  Bar tumbuh ke dalam dari tepi layar. Tiap bar punya tinggi sendiri dari
+  <i>spektrum frekuensi</i>: bar di kiri mewakili nada rendah, di kanan nada tinggi,
+  jadi tiap bar membesar/mengecil sendiri (bukan serentak). Sensitivitasnya membentuk
+  gradien — <b>tengah</b> paling sensitif, ujung tepi kurang (atur lewat slider <b>tengah</b>).
+  Tidak ada animasi waktu: bar bergerak murni karena audionya berubah.
+  Warna default putih di atas latar nyaris hitam, bisa diganti lewat kontrol
+  <b>warna</b> / <b>hue</b>.
+  Tekan <b>⤢</b> pada kartu untuk melihatnya memenuhi layar penuh.
+</div>
+
+<div class="fs" id="fs">
+  <canvas id="fsCanvas"></canvas>
+  <div class="fshint" id="fsHint"></div>
+  <button class="fsclose" id="fsClose">✕ tutup (Esc)</button>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   BAGIAN 1 — SUMBER BAND (audio nyata atau simulasi)
+   Menghasilkan selalu BandLevels {bass, mid, treble} dalam [0,1].
+   ============================================================ */
+
+const AudioEngine = (() => {
+  let ctx = null, analyser = null, srcNode = null, buffer = null;
+  let freqData = null, timeData = null;
+  let playing = false;
+  let usingFile = false;
+
+  // envelope smoothing per band
+  const ENV = {
+    bass:  { a: 0.030, r: 0.300 },
+    mid:   { a: 0.060, r: 0.250 },
+    treble:{ a: 0.010, r: 0.080 }
+  };
+  const smooth = { bass:0, mid:0, treble:0 };
+  let lastT = 0;
+
+  // puncak adaptif per band (naik seketika, turun perlahan ~0.5%/blok)
+  const peaks = { bass:0.05, mid:0.05, treble:0.05 };
+
+  const bands = { bass:0, mid:0, treble:0 };
+
+  function ensureCtx(){
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;             // resolusi cukup untuk bass
+    analyser.smoothingTimeConstant = 0.0; // smoothing kita tangani sendiri
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+  }
+
+  async function loadFile(file){
+    ensureCtx();
+    const ab = await file.arrayBuffer();
+    buffer = await ctx.decodeAudioData(ab);
+    usingFile = true;
+    return buffer.duration;
+  }
+
+  function play(){
+    if (!buffer) return;
+    ensureCtx();
+    stop();
+    srcNode = ctx.createBufferSource();
+    srcNode.buffer = buffer;
+    srcNode.loop = true;
+    srcNode.connect(analyser);
+    analyser.connect(ctx.destination);
+    srcNode.start();
+    playing = true;
+  }
+  function pause(){ if (playing) { stop(); } }
+  function stop(){
+    if (srcNode){ try{ srcNode.stop(); }catch(e){} srcNode.disconnect(); srcNode = null; }
+    playing = false;
+  }
+  function toggle(){ playing ? pause() : play(); }
+
+  function seekFrac(f){
+    if (!buffer) return;
+    const wasPlaying = playing;
+    if (wasPlaying) stop();
+    play();
+    if (srcNode) srcNode.stop();
+    srcNode = ctx.createBufferSource();
+    srcNode.buffer = buffer; srcNode.loop = true;
+    srcNode.connect(analyser); analyser.connect(ctx.destination);
+    srcNode.start(0, f * buffer.duration);
+    playing = true;
+  }
+
+  // energi rata-rata bin dalam rentang Hz (rough bands untuk pratinjau)
+  function bandEnergy(lo, hi){
+    const nyq = ctx.sampleRate / 2;
+    const n = freqData.length;
+    let i0 = Math.max(1, Math.floor(lo / nyq * n));
+    let i1 = Math.min(n - 1, Math.ceil(hi / nyq * n));
+    if (i1 <= i0) i1 = i0 + 1;
+    let sum = 0;
+    for (let i = i0; i <= i1; i++){ const v = freqData[i] / 255; sum += v * v; }
+    return Math.sqrt(sum / (i1 - i0 + 1));
+  }
+
+  function rms(){
+    let sum = 0;
+    for (let i = 0; i < timeData.length; i++){ const v = (timeData[i]-128)/128; sum += v*v; }
+    return Math.sqrt(sum / timeData.length);
+  }
+
+  // simulasi matematis saat tidak ada audio
+  let simT = 0;
+  function simulate(dt){
+    simT += dt;
+    // kick ~ 2 Hz, vokal ~ 0.6 Hz lembut, hi-hat ~ 6 Hz acak
+    const kick = Math.pow(Math.max(0, Math.sin(simT * Math.PI * 2 * 2.0)), 6);
+    const mid  = 0.35 + 0.30 * Math.sin(simT * 2.1) * Math.sin(simT * 0.7 + 1.3);
+    const hat  = Math.random() < 0.18 ? 0.7 + Math.random()*0.3 : 0.08;
+    return { raw:{ bass: kick, mid: Math.max(0, mid), treble: hat }, silent:false };
+  }
+
+  const sens = { v: 1.0 };
+  function setSensitivity(v){ sens.v = v; }
+
+  // ---- spektrum per-bar (A1) --------------------------------------------
+  // N bar -> N nilai [0,1], tiap bar dari bin frekuensi sendiri (bukan 3 band).
+  // Pemetaan logaritmik supaya bass tidak mendominasi; tiap bar punya envelope
+  // sendiri sehingga membesar/mengecil independen.
+  const BAR_N = 96;                       // jumlah slot bar maksimum (cukup utk 4K)
+  const specSmooth = new Float32Array(BAR_N);   // state envelope per-bar
+  const specPeaks  = new Float32Array(BAR_N).fill(0.05);
+  const spectrum = new Float32Array(BAR_N);
+
+  // posisi t∈[0,1] -> indeks bin (log-spread dari ~40 Hz ke ~16 kHz)
+  function binForT(t){
+    const nyq = ctx.sampleRate / 2;
+    const n = freqData.length;
+    const f = 40 * Math.pow(16000 / 40, Math.min(1, Math.max(0, t)));
+    return Math.min(n - 1, Math.max(1, Math.round(f / nyq * n)));
+  }
+
+  function updateSpectrum(dt, sim){
+    const A = 0.012, R = 0.10;   // attack cepat, release ~100 ms
+    for (let i = 0; i < BAR_N; i++){
+      const t = i / (BAR_N - 1);
+      let raw;
+      if (sim){
+        // spektrum palsu: beberapa puncak bergerak + derau -> tiap bar beda
+        const wobble = Math.sin(simT * 1.7 + t * 9) * 0.5 + Math.sin(simT * 0.6 + t * 23) * 0.5;
+        const tilt = Math.pow(1 - t, 0.7);                 // bass condong lebih kuat
+        raw = Math.max(0, tilt * (0.45 + 0.4 * wobble) + (Math.random() - 0.5) * 0.25);
+      } else {
+        const b = binForT(t);
+        raw = freqData[b] / 255;
+      }
+      raw = Math.min(1, Math.max(0, raw * sens.v));
+      specPeaks[i] = raw > specPeaks[i] ? raw : specPeaks[i] * 0.998;
+      const norm = Math.min(1, raw / Math.max(0.25, specPeaks[i]));
+      const tau = norm > specSmooth[i] ? A : R;
+      const coeff = 1 - Math.exp(-dt / tau);
+      specSmooth[i] += (norm - specSmooth[i]) * coeff;
+      spectrum[i] = Math.min(1, Math.max(0, specSmooth[i]));
+    }
+  }
+
+  function read(dt, useSim){
+    lastT += dt;
+    let raw, silent = false;
+    const sim = useSim || !usingFile;
+
+    if (sim){
+      const s = simulate(dt);
+      raw = s.raw;
+    } else if (playing){
+      analyser.getByteFrequencyData(freqData);
+      analyser.getByteTimeDomainData(timeData);
+      raw = {
+        bass:   bandEnergy(20, 250)   * 2.2,
+        mid:    bandEnergy(250, 4000) * 1.6,
+        treble: bandEnergy(4000, 16000)* 1.8
+      };
+      silent = rms() < 0.0001; // ambang hening ~ -80 dBFS
+    } else {
+      raw = { bass:0, mid:0, treble:0 };
+      silent = true;
+    }
+
+    for (const k of ["bass","mid","treble"]){
+      // puncak adaptif: bar bereaksi sama pada lagu pelan & keras
+      const r = Math.min(1, Math.max(0, raw[k] * sens.v));
+      peaks[k] = r > peaks[k] ? r : peaks[k] * 0.995;
+      const norm = Math.min(1, r / Math.max(0.08, peaks[k]));
+      // envelope
+      const e = ENV[k];
+      const tau = norm > smooth[k] ? e.a : e.r;
+      const coeff = 1 - Math.exp(-dt / tau);
+      smooth[k] += (norm - smooth[k]) * coeff;
+      bands[k] = Math.min(1, Math.max(0, smooth[k]));
+    }
+
+    updateSpectrum(dt, sim);
+    return { bands, spectrum, silent, rmsv: 0, barCount: BAR_N };
+  }
+
+  return {
+    ensureCtx, loadFile, play, pause, toggle, read, setSensitivity,
+    isPlaying: () => playing,
+    hasFile: () => usingFile,
+    getBuffer: () => buffer,
+    seekFrac,
+    barCount: () => BAR_N
+  };
+})();
+
+/* ============================================================
+   BAGIAN 2 — WARNA & RENDER BAR-FRAME
+   Semua variasi menggambar bar spektrum yang tumbuh ke dalam dari
+   4 TEPI area kanvas, area tengah sengaja dibiarkan transparan/gelap.
+   Tidak ada animasi waktu: bentuk siluet statis, hanya skala yang
+   mengikuti level audio.
+   ============================================================ */
+
+// konfigurasi global dari panel kontrol
+const CFG = { thickness: 3, intensity: 1.0, color: "#f2f2f2", floorFrac: 0.12, centerProfile: 0.6, t: 0 };
+
+// parse "#rgb"/"#rrggbb" -> {r,g,b} atau null (dipakai kontrol warna & smoke-test)
+function parseHex(str){
+  if (typeof str !== "string") return null;
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(str.trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return {
+    r: parseInt(h.slice(0,2), 16),
+    g: parseInt(h.slice(2,4), 16),
+    b: parseInt(h.slice(4,6), 16)
+  };
+}
+
+// hsl helper (dipakai kontrol hue)
+const hsl = (h,s,l,a=1) => `hsla(${((h%360)+360)%360} ${s}% ${l}% / ${a})`;
+
+// --- siluet statis (seeded, TANPA waktu) ---------------------------------
+// Bar ke-i pada satu tepi punya panjang relatif tetap yang terlihat seperti
+// spektrum nyata: banyak bar sedang, sebagian kecil tinggi. Fungsi murni dari
+// (i, seed): nilai sama -> panjang sama setiap saat.
+// Dua hash digabung: satu elemen acak per-bar (B2) supaya tiap bar unik,
+// bukan hanya berbeda per-sisi.
+function barShape(i, seed){
+  let x = (i * 374761393 + seed * 668265263) | 0;
+  x = (x ^ (x >>> 13)) | 0;
+  x = (x * 1274126177) | 0;
+  const r1 = ((x ^ (x >>> 16)) >>> 0) / 4294967295; // [0,1]
+  let y = (i * 1013904223 + seed * 2654435761) | 0;
+  y = (y ^ (y >>> 15)) | 0;
+  y = (y * 2246822519) | 0;
+  const r2 = ((y ^ (y >>> 13)) >>> 0) / 4294967295; // [0,1]
+  // gabung: dasar sedang + lonjakan acak, tetap di (0,1]
+  const base = 0.18 + 0.42 * r1;
+  const spike = 0.55 * r2 * r2 * r1;   // beberapa bar sangat tinggi
+  const v = base + spike;
+  return Math.min(1, Math.max(0.04, v));
+}
+
+// bobot tengah: 1 di tengah tepi, turun ke (1 - profile) di ujung.
+// t ∈ [0,1] = posisi ternormalisasi sepanjang tepi.
+function centerWeight(t, profile){
+  const d = 2 * Math.abs(t - 0.5);       // 0 di tengah, 1 di ujung
+  return 1 - profile * d * d;
+}
+
+// gambar bar di tepi terpilih. `spec` = array level [0,1] per-bar (satu nilai
+// per slot bar, dari spektrum FFT). Tiap bar memakai nilai spektrumnya SENDIRI,
+// jadi membesar/mengecil independen. Tetap tanpa animasi waktu.
+// opts = { thickness, maxLen, color, floorFrac, edges, centerProfile }
+//   floorFrac: garis dasar dimundurkan (fraksi sisi TERPENDEK layar); <0 = overhang.
+//   edges: daftar tepi yang digambar; default keempatnya.
+//   centerProfile: 0 = rata; >0 -> tengah lebih sensitif, ujung kurang.
+function drawBarFrame(ctx, W, H, spec, opts){
+  const t = opts.thickness;
+  if (t <= 0) return;
+  const spacingFactor = 2;            // bar menempati 1/2 slot, 1/2 sisanya celah
+  const maxLen = opts.maxLen;
+  const floorFrac = opts.floorFrac || 0;
+  const profile = opts.centerProfile || 0;
+  const wanted = opts.edges || ["top","bottom","left","right"];
+  const nSpec = spec && spec.length ? spec.length : 1;
+
+  // seed siluet per tepi (berbeda-beda -> tiap sisi tidak identik)
+  const seedOf = { top:11, bottom:37, left:53, right:71 };
+
+  ctx.fillStyle = opts.color;
+
+  for (const side of wanted){
+    const len = (side === "top" || side === "bottom") ? W : H;
+    const seed = seedOf[side];
+    const n = Math.max(1, Math.floor(len / (t * spacingFactor)));
+    const slot = len / n;
+    const barW = Math.min(t, slot * 0.75);   // ketebalan konstan, tapi tidak melebar
+    const off  = (slot - barW) / 2;          // center bar di dalam slot
+    // lantai = fraksi dari sisi TERPENDEK layar, supaya celah dasar terlihat
+    // sama besar di keempat tepi (bukan lebih besar di tepi yang lebih panjang).
+    // floorFrac < 0 -> bar menjorok KELUAR tepi (overhang) sebesar |floor|.
+    const floor = Math.min(W, H) * floorFrac;
+    const capY = (side === "top" || side === "bottom") ? H : W;
+    for (let i = 0; i < n; i++){
+      const tPos = n > 1 ? i / (n - 1) : 0.5;
+      // level: ambil dari spektrum per-bar (indeks proporsional) x bobot tengah
+      const si = Math.min(nSpec - 1, Math.round(tPos * (nSpec - 1)));
+      const lvl = Math.min(1, Math.max(0, spec[si] * centerWeight(tPos, profile)));
+      // tinggi = floor + level * maxLen * bentuk; dibatasi maxLen (cap A3)
+      const grow = Math.min(maxLen, lvl * maxLen * barShape(i, seed));
+      const inner = Math.min(Math.max(floor + grow, 0), capY); // ujung dalam (tidak lewat tepi jauh)
+      const outer = Math.min(0, floor);                        // ujung luar (negatif = overhang)
+      const span = inner - outer;
+      if (span <= 0) continue;
+      const c = i * slot + off;
+      if (side === "top")         ctx.fillRect(c, outer, barW, span);
+      else if (side === "bottom") ctx.fillRect(c, H - inner, barW, span);
+      else if (side === "left")   ctx.fillRect(outer, c, span, barW);
+      else                        ctx.fillRect(W - inner, c, span, barW);
+    }
+  }
+}
+
+/* ============================================================
+   BAGIAN 3 — VARIASI
+   Setiap variasi = objek { id, cat, name, desc, draw(ctx,W,H,dt,B,S) }
+   ============================================================ */
+
+const VARIANTS = [];
+
+// opsi bar bersama: lantai (garis dasar) + batas tinggi, warna & ketebalan dari CFG
+function barOpts(W, H, edges){
+  return {
+    thickness: CFG.thickness,
+    maxLen: 0.28*Math.min(W,H),
+    floorFrac: CFG.floorFrac,
+    color: CFG.color,
+    edges,
+    centerProfile: CFG.centerProfile
+  };
+}
+
+// spektrum per-bar terakhir dari engine (diisi tiap frame oleh loop render)
+let SPECTRUM = new Float32Array(1);
+
+VARIANTS.push({
+  id:"bars-frame", cat:"Bar", name:"Bar: frame penuh (4 tepi)",
+  desc:"Bar tipis di 4 tepi; tiap bar punya tinggi sendiri dari spektrum, membesar/mengecil independen. Tengah lebih sensitif.",
+  draw(ctx,W,H,dt,B,S){
+    drawBarFrame(ctx, W, H, (S && S.spectrum) || SPECTRUM, barOpts(W,H,["top","bottom","left","right"]));
+  }
+});
+
+VARIANTS.push({
+  id:"bars-horizontal", cat:"Bar", name:"Bar: atas & bawah saja",
+  desc:"Hanya tepi atas dan bawah. Tiap bar bergerak sendiri mengikuti spektrum; tengah lebih sensitif.",
+  draw(ctx,W,H,dt,B,S){
+    drawBarFrame(ctx, W, H, (S && S.spectrum) || SPECTRUM, barOpts(W,H,["top","bottom"]));
+  }
+});
+
+VARIANTS.push({
+  id:"bars-vertical", cat:"Bar", name:"Bar: kiri & kanan saja",
+  desc:"Hanya tepi kiri dan kanan. Tiap bar bergerak sendiri mengikuti spektrum; tengah lebih sensitif.",
+  draw(ctx,W,H,dt,B,S){
+    drawBarFrame(ctx, W, H, (S && S.spectrum) || SPECTRUM, barOpts(W,H,["left","right"]));
+  }
+});
+
+/* ============================================================
+   BAGIAN 4 — UI
+   ============================================================ */
+
+const $ = id => document.getElementById(id);
+const CATS = ["Bar"];
+let activeCat = "Bar";
+
+function buildTabs(){
+  const tabs = $("tabs");
+  tabs.innerHTML="";
+  CATS.forEach(c=>{
+    const b=document.createElement("button");
+    b.textContent=c; if(c===activeCat) b.classList.add("on");
+    b.onclick=()=>{ activeCat=c; buildTabs(); buildGrid(); };
+    tabs.appendChild(b);
+  });
+}
+
+let cards = []; // {v, canvas, ctx, dpr}
+function buildGrid(){
+  const grid=$("grid"); grid.innerHTML=""; cards=[];
+  VARIANTS.filter(v=>v.cat===activeCat).forEach(v=>{
+    const card=document.createElement("div"); card.className="card";
+    const head=document.createElement("div"); head.className="cardhead";
+    const h=document.createElement("h2"); h.textContent=v.name;
+    const tag=document.createElement("span"); tag.className="tag"; tag.textContent=v.cat;
+    const fs=document.createElement("button"); fs.textContent="⤢"; fs.title="layar penuh";
+    fs.onclick=()=>openFs(v);
+    head.append(h,tag,fs);
+    const stage=document.createElement("div"); stage.className="stage";
+    const cv=document.createElement("canvas");
+    const hint=document.createElement("div"); hint.className="hint"; hint.textContent="bar muncul di 4 tepi kotak ini";
+    stage.append(cv,hint);
+    const desc=document.createElement("div"); desc.className="carddesc"; desc.textContent=v.desc;
+    card.append(head,stage,desc);
+    grid.appendChild(card);
+    cards.push({v, canvas:cv, ctx:cv.getContext("2d"), S:{}});
+  });
+  resizeAll();
+}
+
+function resizeAll(){
+  for (const c of cards){
+    const r=c.canvas.parentElement.getBoundingClientRect();
+    const dpr=Math.min(2,window.devicePixelRatio||1);
+    c.canvas.width=Math.max(1,r.width*dpr);
+    c.canvas.height=Math.max(1,r.height*dpr);
+    c.ctx.setTransform(dpr,0,0,dpr,0,0);
+    c.dpr=dpr;
+  }
+  if ($("fs").classList.contains("on")){
+    const cv=$("fsCanvas"); const dpr=Math.min(2,window.devicePixelRatio||1);
+    cv.width=Math.max(1,innerWidth*dpr); cv.height=Math.max(1,innerHeight*dpr);
+    cv.getContext("2d").setTransform(dpr,0,0,dpr,0,0);
+  }
+}
+window.addEventListener("resize",resizeAll);
+
+/* --- fullscreen single variation --- */
+let fsVariant=null;
+function openFs(v){
+  fsVariant=v;
+  $("fs").classList.add("on"); $("fsHint").textContent=v.name;
+  resizeAll();
+}
+function closeFs(){ $("fs").classList.remove("on"); fsVariant=null; }
+$("fsClose").onclick=closeFs;
+window.addEventListener("keydown",e=>{ if(e.key==="Escape") closeFs(); });
+
+/* --- audio UI --- */
+$("file").onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+const drop=$("drop");
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{ const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+window.addEventListener("dragover",e=>e.preventDefault());
+window.addEventListener("drop",e=>{e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) handleFile(f);});
+
+async function handleFile(file){
+  try{
+    const dur = await AudioEngine.loadFile(file);
+    $("playBtn").disabled=false;
+    $("simBtn").classList.remove("on");
+    simOn=false;
+    $("srcInfo").textContent = `audio: ${file.name} (${dur.toFixed(1)}s)`;
+    AudioEngine.play();
+    $("playBtn").textContent="⏸ Jeda";
+  }catch(err){ $("srcInfo").textContent="gagal decode: "+err.message; }
+}
+
+$("playBtn").onclick=()=>{ AudioEngine.toggle(); $("playBtn").textContent = AudioEngine.isPlaying()?"⏸ Jeda":"▶ Putar"; };
+
+let simOn=true;
+$("simBtn").onclick=()=>{ simOn=!simOn; $("simBtn").classList.toggle("on",simOn); $("simBtn").textContent="Simulasi: "+(simOn?"ON":"OFF"); };
+
+// garis dasar: slider 0-100 (%) dipetakan ke floorFrac -0.10 .. 0.35
+// (0% = overhang maksimal, 100% = celah dasar paling besar)
+const FLOOR_MIN = -0.10, FLOOR_MAX = 0.35;
+function floorFromSlider(v){ return FLOOR_MIN + (v / 100) * (FLOOR_MAX - FLOOR_MIN); }
+function floorLabel(v){ return Math.round(v) + "%"; }
+
+/* --- kontrol --- */
+function bindRange(id,vid,fmt,cb){
+  const el=$(id), out=$(vid);
+  const upd=()=>{ const v=+el.value; out.textContent=fmt(v); cb(v); };
+  el.oninput=upd; upd();
+}
+bindRange("thick","thickV",v=>v,v=>CFG.thickness=v);
+bindRange("floor","floorV",floorLabel,v=>CFG.floorFrac=floorFromSlider(v));
+bindRange("inten","intenV",v=>(v/100).toFixed(1),v=>CFG.intensity=v/100);
+bindRange("center","centerV",v=>(v/100).toFixed(2),v=>CFG.centerProfile=v/100);
+
+// --- warna: hex picker + hue slider saling sinkron ---
+function setColor(hex, syncHue){
+  const c = parseHex(hex);
+  if (!c) return;                       // hex tidak valid -> biarkan warna lama
+  CFG.color = "#" + [c.r,c.g,c.b].map(v=>v.toString(16).padStart(2,"0")).join("");
+  $("color").value = CFG.color;
+  $("colorV").textContent = CFG.color;
+  if (syncHue !== false){
+    const max = Math.max(c.r,c.g,c.b), min = Math.min(c.r,c.g,c.b);
+    let h = 0;
+    if (max !== min){
+      const d = max - min;
+      if (max === c.r) h = ((c.g - c.b) / d + (c.g < c.b ? 6 : 0)) * 60;
+      else if (max === c.g) h = ((c.b - c.r) / d + 2) * 60;
+      else h = ((c.r - c.g) / d + 4) * 60;
+    }
+    $("hue").value = Math.round(h);
+    $("hueV").textContent = Math.round(h);
+  }
+}
+$("color").oninput = e => setColor(e.target.value, true);
+// hue slider: bikin warna terang dari hue (S rendah, L tinggi -> tetap terang)
+$("hue").oninput = () => {
+  const h = +$("hue").value;
+  const c = hslToRgb(h, 55, 68);   // saturasi cukup agar hue terlihat jelas, tetap terang
+  setColor("#" + c.map(v=>v.toString(16).padStart(2,"0")).join(""), false);
+  $("hueV").textContent = h;
+};
+$("whiteBtn").onclick = () => { setColor("#f2f2f2", true); $("hue").value = 0; $("hueV").textContent = 0; };
+
+function hslToRgb(h, s, l){
+  s /= 100; l /= 100;
+  const k = n => (n + h/30) % 12;
+  const a = s * Math.min(l, 1-l);
+  const f = n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n), 1)))));
+  return [f(0), f(8), f(4)];
+}
+
+setColor(CFG.color, true);
+
+/* --- loop render --- */
+let last=performance.now();
+let stateShown="Active";
+function frame(now){
+  const dt=Math.min(0.1,(now-last)/1000); last=now;
+  CFG.t+=dt;
+
+  const { bands, silent, spectrum } = AudioEngine.read(dt, simOn);
+  if (spectrum) SPECTRUM = spectrum;
+
+  const st = (simOn||AudioEngine.isPlaying()) ? (silent?"Hening":"Active") : "Senyap";
+  if (st!==stateShown){ stateShown=st; $("state").innerHTML="keadaan: <b>"+st+"</b>"; }
+
+  $("bBass").style.width=(bands.bass*100).toFixed(0)+"%";
+  $("bMid").style.width=(bands.mid*100).toFixed(0)+"%";
+  $("bTreb").style.width=(bands.treble*100).toFixed(0)+"%";
+
+  const inten = CFG.intensity;
+  for (const c of cards){
+    const ctx=c.ctx, W=c.canvas.width/c.dpr, H=c.canvas.height/c.dpr;
+    ctx.clearRect(0,0,W,H);
+    ctx.globalAlpha=inten;
+    try{ c.v.draw(ctx,W,H,dt,bands,c.S); }catch(e){}
+    ctx.globalAlpha=1;
+  }
+
+  if (fsVariant){
+    const cv=$("fsCanvas"), ctx=cv.getContext("2d");
+    const dpr=Math.min(2,window.devicePixelRatio||1);
+    const W=cv.width/dpr, H=cv.height/dpr;
+    ctx.clearRect(0,0,W,H);
+    ctx.globalAlpha=inten;
+    try{ fsVariant.draw(ctx,W,H,dt,bands,fsVariant.__S||(fsVariant.__S={})); }catch(e){}
+    ctx.globalAlpha=1;
+  }
+
+  requestAnimationFrame(frame);
+}
+
+buildTabs(); buildGrid(); requestAnimationFrame(frame);
+
+// ekspos untuk smoke-test headless
+globalThis.parseHex = parseHex;
+globalThis.setColor = setColor;
+globalThis.drawBarFrame = drawBarFrame;
+globalThis.barShape = barShape;
+globalThis.centerWeight = centerWeight;
+globalThis.floorFromSlider = floorFromSlider;
+globalThis.floorLabel = floorLabel;
+globalThis.AudioEngine = AudioEngine;
+</script>
+</body>
+</html>

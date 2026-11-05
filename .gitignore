@@ -1,0 +1,57 @@
+# AI agent tooling & generated files
+.agents/
+.claude/
+.opencode/
+.specify/
+_bmad/
+_bmad-output/
+.agent/
+.aider*
+.continue/
+.cursor/
+.cursorrules
+.windsurf/
+.kiro/
+.roo/
+.cline/
+.codeium/
+.tabnine/
+.goose/
+.copilot/
+.github/copilot-instructions.md
+.mcp.json
+.superpowers/
+
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+
+docs/
+specs/
+
+# Build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+spikes/target/
+spikes/out/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# IDE & editors
+.history/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

@@ -1,0 +1,11 @@
+[package]
+name = "vibewave-core"
+description = "Pure VibeWave logic: band analysis, smoothing, glow composition. No Windows, no Tauri."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# FFT for the 3-band analyzer. Approved 2026-11-01 (MIT OR Apache-2.0).
+rustfft = "6.4.1"

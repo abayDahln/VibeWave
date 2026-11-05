@@ -1,0 +1,19 @@
+[package]
+name = "s2-audio"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# S-2: WASAPI shared-mode loopback on the default render device.
+# Validates: capture keeps running in silence at ~0 CPU, silence/resume
+# detection, capture latency, recovery on device change/invalidation.
+[dependencies.windows]
+version = "0.62.2"
+features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Performance",
+    "Win32_System_Variant",
+]

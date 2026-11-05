@@ -1,0 +1,31 @@
+[package]
+name = "s1-tauri"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# S-1b: the S-1a native overlay running inside a Tauri v2 process, plus a
+# settings WebView window that is created on demand and destroyed on close.
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.5", features = [] }
+windows-numerics = "0.3.1"
+
+[dependencies.windows]
+version = "0.62.2"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+]

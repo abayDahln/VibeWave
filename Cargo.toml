@@ -1,0 +1,19 @@
+# VibeWave workspace root.
+# Two crates: `vibewave-core` (pure logic, no Windows/Tauri) and `vibewave`
+# (the Windows binary: overlay + audio + shell). Spikes are excluded so they
+# never enter the real dependency graph.
+[workspace]
+resolver = "2"
+members = ["crates/vibewave-core", "crates/vibewave"]
+exclude = ["spikes"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+license = "MIT OR Apache-2.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

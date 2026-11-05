@@ -1,0 +1,9 @@
+# Workspace for throwaway technical spikes (PRD §9). Not production code.
+# Findings are recorded in docs/spikes/ before any spike is deleted.
+[workspace]
+resolver = "2"
+members = ["s1-overlay", "s1-tauri", "s2-audio", "s3-media", "s4-fullscreen"]
+
+[profile.release]
+debug = false
+opt-level = 3
