@@ -30,7 +30,7 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED, D2D1_COLOR_SPACE_SRGB,
     D2D1_DEVICE_CONTEXT_OPTIONS_NONE, D2D1_EXTEND_MODE_CLAMP, D2D1_FACTORY_OPTIONS,
     D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES,
-    D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES,
+    D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES, D2D1_ROUNDED_RECT,
 };
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D11::{
@@ -284,7 +284,16 @@ impl Renderer {
             for seg in &frame.bars {
                 let rect = bar_rect(seg, w, h);
                 self.bars_brush.SetOpacity(seg.opacity);
-                self.dc.FillRectangle(&rect, &self.bars_brush);
+                if seg.radius > 0.0 {
+                    let rounded = D2D1_ROUNDED_RECT {
+                        rect,
+                        radiusX: seg.radius,
+                        radiusY: seg.radius,
+                    };
+                    self.dc.FillRoundedRectangle(&rounded, &self.bars_brush);
+                } else {
+                    self.dc.FillRectangle(&rect, &self.bars_brush);
+                }
             }
 
             self.dc.EndDraw(None, None)?;

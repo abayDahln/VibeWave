@@ -266,6 +266,7 @@ pub fn run(
                     palette,
                     color_mode: current.settings.bars_color_mode,
                     position: current.settings.bars_position,
+                    rounded: current.settings.bars_rounded,
                 };
                 compose_bars(&mut bars_frame, w, h, &spectrum, &params);
                 surface.renderer.draw_bars(&bars_frame)?;

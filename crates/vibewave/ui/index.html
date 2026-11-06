@@ -522,6 +522,24 @@
             </div>
           </div>
 
+          <div class="row toggle-row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <rect x="6" y="4" width="4" height="16" rx="2" />
+              <rect x="14" y="8" width="4" height="12" rx="2" />
+            </svg>
+            <div class="labels">
+              <div class="title">Rounded bars</div>
+              <div class="sub">Round the bar ends instead of square</div>
+            </div>
+            <div class="control">
+              <label class="toggle">
+                <input type="checkbox" id="bars-rounded" />
+                <span class="track"></span>
+                <span class="knob"></span>
+              </label>
+            </div>
+          </div>
+
           <div class="row">
             <svg class="ico" viewBox="0 0 24 24">
               <path d="M4 12h4l2-5 4 10 2-5h4" />
@@ -664,6 +682,7 @@
         $("bars-beat").value = dto.bars_beat_response;
         $("bars-beat-val").textContent = Number(dto.bars_beat_response).toFixed(2);
         $("bars-color-mode").value = dto.bars_color_mode;
+        $("bars-rounded").checked = dto.bars_rounded;
         $("bars-color-sub").textContent =
           dto.bars_color_mode === "off"
             ? "Off: one colour from the cover or custom"
@@ -774,6 +793,9 @@
       });
       $("bars-color-mode").addEventListener("change", (e) => {
         invoke("set_bars_color_mode", { mode: e.target.value }).then(refresh);
+      });
+      $("bars-rounded").addEventListener("change", (e) => {
+        invoke("set_bars_rounded", { on: e.target.checked });
       });
       const barsCenter = $("bars-center");
       barsCenter.addEventListener("input", () => {

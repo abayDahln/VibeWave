@@ -100,6 +100,8 @@ pub struct Settings {
     pub bars_beat_response: f32,
     /// Bars theme: how the palette maps onto the bars.
     pub bars_color_mode: BarColorMode,
+    /// Bars theme: round the bar ends instead of square.
+    pub bars_rounded: bool,
 }
 
 /// `monitor` value meaning "whichever monitor is primary right now".
@@ -125,6 +127,7 @@ impl Default for Settings {
             bars_center_profile: 0.6,
             bars_beat_response: 1.0,
             bars_color_mode: BarColorMode::Off,
+            bars_rounded: false,
         }
     }
 }
@@ -254,6 +257,13 @@ impl Settings {
                         s.bars_color_mode.id()
                     )),
                 },
+                "bars_rounded" => match parse_bool(value) {
+                    Some(b) => s.bars_rounded = b,
+                    None => warnings.push(format!(
+                        "bars_rounded: invalid value '{value}', using default {}",
+                        s.bars_rounded
+                    )),
+                },
                 // Unknown keys are ignored on purpose: later features add keys
                 // and must not break older binaries.
                 _ => {}
@@ -287,7 +297,8 @@ impl Settings {
              bars_max_len_frac = {}\n\
              bars_center_profile = {}\n\
              bars_beat_response = {}\n\
-             bars_color_mode = {}\n",
+             bars_color_mode = {}\n\
+             bars_rounded = {}\n",
             self.over_taskbar,
             self.thickness_px,
             self.intensity,
@@ -305,6 +316,7 @@ impl Settings {
             self.bars_center_profile,
             self.bars_beat_response,
             self.bars_color_mode.id(),
+            self.bars_rounded,
         )
     }
 }
@@ -524,6 +536,7 @@ future_key = whatever
             bars_center_profile: 0.4,
             bars_beat_response: 1.5,
             bars_color_mode: BarColorMode::ByPosition,
+            bars_rounded: true,
         };
         let (parsed, w) = Settings::parse(&original.to_ini());
         assert!(w.is_empty(), "{w:?}");
@@ -546,6 +559,7 @@ future_key = whatever
         assert_eq!(parsed.bars_center_profile, original.bars_center_profile);
         assert_eq!(parsed.bars_beat_response, original.bars_beat_response);
         assert_eq!(parsed.bars_color_mode, original.bars_color_mode);
+        assert_eq!(parsed.bars_rounded, original.bars_rounded);
         assert_eq!(
             to_hex_color(parsed.custom_color),
             to_hex_color(original.custom_color)
@@ -651,6 +665,7 @@ bars_max_len_frac = 0.18
 bars_center_profile = 0.9
 bars_beat_response = 1.8
 bars_color_mode = perbar
+bars_rounded = true
 ";
         let (s, w) = Settings::parse(text);
         assert!(w.is_empty(), "{w:?}");
@@ -661,20 +676,22 @@ bars_color_mode = perbar
         assert_eq!(s.bars_center_profile, 0.9);
         assert_eq!(s.bars_beat_response, 1.8);
         assert_eq!(s.bars_color_mode, BarColorMode::PerBar);
+        assert!(s.bars_rounded);
     }
 
     #[test]
     fn invalid_bars_values_warn_and_keep_defaults() {
         let (s, w) = Settings::parse(
             "bars_position = diagonal\nbars_thickness_px = -1\nbars_center_profile = 2\n\
-             bars_color_mode = rainbow\n",
+             bars_color_mode = rainbow\nbars_rounded = maybe\n",
         );
         let d = Settings::default();
         assert_eq!(s.bars_position, d.bars_position);
         assert_eq!(s.bars_thickness_px, d.bars_thickness_px);
         assert_eq!(s.bars_center_profile, d.bars_center_profile);
         assert_eq!(s.bars_color_mode, d.bars_color_mode);
-        assert_eq!(w.len(), 4, "{w:?}");
+        assert_eq!(s.bars_rounded, d.bars_rounded);
+        assert_eq!(w.len(), 5, "{w:?}");
     }
 
     #[test]

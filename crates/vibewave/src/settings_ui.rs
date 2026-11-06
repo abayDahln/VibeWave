@@ -58,6 +58,8 @@ pub struct SettingsDto {
     pub bars_beat_response: f32,
     /// Bars theme: `off`, `perbar`, or `position`.
     pub bars_color_mode: String,
+    /// Bars theme: rounded bar ends.
+    pub bars_rounded: bool,
 }
 
 /// One entry of the monitor dropdown.
@@ -92,6 +94,7 @@ impl SettingsDto {
             bars_center_profile: live.settings.bars_center_profile,
             bars_beat_response: live.settings.bars_beat_response,
             bars_color_mode: live.settings.bars_color_mode.id().to_string(),
+            bars_rounded: live.settings.bars_rounded,
         }
     }
 }
@@ -256,6 +259,12 @@ fn set_bars_color_mode(
     }
 }
 
+/// Bars theme: round the bar ends instead of square.
+#[tauri::command]
+fn set_bars_rounded(state: tauri::State<'_, Arc<SharedSettings>>, on: bool) {
+    state.set_bars_rounded(on);
+}
+
 /// Monitors for the dropdown: "Primary monitor" first, then each display.
 #[tauri::command]
 fn list_monitors() -> Vec<MonitorDto> {
@@ -356,6 +365,7 @@ pub fn build_app(
             set_bars_center_profile,
             set_bars_beat_response,
             set_bars_color_mode,
+            set_bars_rounded,
             list_monitors,
             set_monitor,
             set_active,

@@ -244,6 +244,11 @@ impl SharedSettings {
     pub fn set_bars_color_mode(&self, mode: BarColorMode) {
         self.update(|s| s.bars_color_mode = mode);
     }
+
+    /// Bars theme: round the bar ends instead of square.
+    pub fn set_bars_rounded(&self, on: bool) {
+        self.update(|s| s.bars_rounded = on);
+    }
 }
 
 impl Default for SharedSettings {
@@ -378,6 +383,9 @@ mod tests {
         assert_eq!(s.get().settings.bars_beat_response, 0.1);
         s.set_bars_color_mode(BarColorMode::PerBar);
         assert_eq!(s.get().settings.bars_color_mode, BarColorMode::PerBar);
+        assert!(!s.get().settings.bars_rounded);
+        s.set_bars_rounded(true);
+        assert!(s.get().settings.bars_rounded);
     }
 
     #[test]

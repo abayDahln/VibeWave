@@ -83,6 +83,8 @@ pub struct BarSegment {
     pub outer: f32,
     pub inner: f32,
     pub thickness: f32,
+    /// Corner radius for a rounded bar; `0` means square corners.
+    pub radius: f32,
     pub opacity: f32,
     pub color: [f32; 3],
 }
@@ -147,6 +149,8 @@ pub struct BarsParams {
     pub color_mode: BarColorMode,
     /// Which edges to draw.
     pub position: Position,
+    /// Round the bar ends (pill-shaped) instead of square.
+    pub rounded: bool,
 }
 
 /// The composed bar frame. Reused across frames so steady-state drawing allocates
@@ -327,6 +331,13 @@ pub fn compose_bars(
             if inner <= 0.0 {
                 continue;
             }
+            // A rounded bar is a pill: radius = half the width, but never more
+            // than half its length, so very short bars stay well-formed.
+            let radius = if params.rounded {
+                (bar_w * 0.5).min(inner * 0.5)
+            } else {
+                0.0
+            };
             let color = bar_color(&palette, params.color_mode, edge, i, t_pos);
             frame.bars.push(BarSegment {
                 edge,
@@ -334,6 +345,7 @@ pub fn compose_bars(
                 outer: 0.0,
                 inner,
                 thickness: bar_w,
+                radius,
                 opacity,
                 color,
             });
@@ -364,6 +376,7 @@ mod tests {
             palette: Palette::single([1.0, 1.0, 1.0]),
             color_mode: BarColorMode::Off,
             position: Position::All,
+            rounded: false,
         }
     }
 
@@ -625,6 +638,35 @@ mod tests {
                 .filter(|e| !want.contains(e))
                 .collect();
             assert!(unexpected.is_empty(), "{position:?} drew {unexpected:?}");
+        }
+    }
+
+    #[test]
+    fn rounded_flag_sets_a_bounded_corner_radius() {
+        let square = BarsParams {
+            rounded: false,
+            ..params()
+        };
+        let round = BarsParams {
+            rounded: true,
+            ..params()
+        };
+        let mut a = BarsFrame::new();
+        let mut b = BarsFrame::new();
+        compose_bars(&mut a, 1920.0, 1080.0, &spectrum_of(96, 1.0), &square);
+        compose_bars(&mut b, 1920.0, 1080.0, &spectrum_of(96, 1.0), &round);
+        assert!(a.bars.iter().all(|s| s.radius == 0.0));
+        for seg in &b.bars {
+            assert!(seg.radius > 0.0, "rounded bar has no radius");
+            // Never more than half the width or half the length.
+            assert!(seg.radius <= seg.thickness * 0.5 + 0.01, "{seg:?}");
+            assert!(seg.radius <= seg.length() * 0.5 + 0.01, "{seg:?}");
+        }
+        // Geometry (lengths/colours) is otherwise identical.
+        assert_eq!(a.bars.len(), b.bars.len());
+        for (x, y) in a.bars.iter().zip(&b.bars) {
+            assert_eq!(x.inner, y.inner);
+            assert_eq!(x.pos, y.pos);
         }
     }
 
