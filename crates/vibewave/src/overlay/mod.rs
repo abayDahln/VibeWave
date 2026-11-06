@@ -21,7 +21,7 @@ use vibewave_core::compose::{compose, ComposeParams, FrameInput, GlowFrame};
 use vibewave_core::envelope::BandEnvelopes;
 use vibewave_core::geometry::{overlay_rect, pick_monitor, scale_px, Rect as CoreRect};
 use vibewave_core::level_slot::LevelSlot;
-use vibewave_core::palette::Palette;
+use vibewave_core::palette::{Palette, MAX_PALETTE};
 use vibewave_core::settings::Theme;
 use vibewave_core::visual;
 
@@ -249,13 +249,14 @@ pub fn run(
                 // A failed read keeps the previous spectrum. The bars module has
                 // its own attack/release feel, so no glow envelope is applied.
                 levels.load_spectrum(&mut spectrum);
-                // Multi-colour modes need more than one colour; a single custom
-                // colour is expanded into hue-shifted variants so the modes still
-                // do something. Single-colour mode uses the palette as-is.
+                // Multi-colour modes need several colours. If the cover/custom
+                // source only yields one (a monochrome cover, or a custom colour),
+                // expand it into hue-shifted variants so the modes still show
+                // variety. Single-colour mode uses the palette as-is.
                 let palette = if current.settings.bars_color_mode == BarColorMode::Off {
                     current.palette
                 } else {
-                    current.palette.with_at_least(2)
+                    current.palette.with_at_least(MAX_PALETTE)
                 };
                 let params = BarsParams {
                     thickness_px: scale_px(current.settings.bars_thickness_px, surface.dpi),

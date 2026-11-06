@@ -283,6 +283,11 @@ impl Renderer {
 
             for seg in &frame.bars {
                 let rect = bar_rect(seg, w, h);
+                // Each bar carries its own colour (multi-colour modes); a solid
+                // brush is re-coloured per bar, so no per-bar GPU resource. Alpha
+                // comes from the separate opacity so it matches the glow path.
+                let [r, g, b] = seg.color;
+                self.bars_brush.SetColor(&D2D1_COLOR_F { r, g, b, a: 1.0 });
                 self.bars_brush.SetOpacity(seg.opacity);
                 if seg.radius > 0.0 {
                     let rounded = D2D1_ROUNDED_RECT {

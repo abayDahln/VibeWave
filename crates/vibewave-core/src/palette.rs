@@ -273,6 +273,24 @@ mod tests {
     }
 
     #[test]
+    fn with_at_least_max_gives_four_distinct_colours() {
+        // The Bars multi-colour modes expand a monochrome cover / custom colour
+        // to MAX_PALETTE; all four must be clearly different, or the modes would
+        // look like a single colour.
+        let base = Palette::single([0.2, 0.5, 0.9]);
+        let four = base.with_at_least(MAX_PALETTE);
+        assert_eq!(four.len(), MAX_PALETTE);
+        for i in 0..MAX_PALETTE {
+            for j in (i + 1)..MAX_PALETTE {
+                let d: f32 = (0..3)
+                    .map(|k| (four.nth(i)[k] - four.nth(j)[k]).abs())
+                    .sum();
+                assert!(d > 0.15, "colours {i} and {j} too close: {d}");
+            }
+        }
+    }
+
+    #[test]
     fn nth_and_lerp_ends_are_linear() {
         let p = Palette::new(&[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]);
         assert_eq!(p.nth(0), [0.0, 0.0, 0.0]);
