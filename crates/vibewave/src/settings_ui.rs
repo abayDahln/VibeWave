@@ -38,8 +38,6 @@ pub struct SettingsDto {
     pub active_color: String,
     /// True when the active colour comes from cover art (for the UI hint).
     pub active_from_cover: bool,
-    /// Wave character, 0 = soft … 1 = rough.
-    pub character: f32,
     /// FR-13: keep the glow over fullscreen apps.
     pub stay_visible_fullscreen: bool,
     /// Target display number; 0 = primary.
@@ -82,7 +80,6 @@ impl SettingsDto {
             custom_color: to_hex_color(live.settings.custom_color),
             active_color: to_hex_color(live.palette.at(0.0)),
             active_from_cover: live.palette_from_cover,
-            character: live.settings.character,
             stay_visible_fullscreen: live.settings.stay_visible_fullscreen,
             monitor: live.settings.monitor,
             active: live.active,
@@ -185,12 +182,6 @@ fn set_custom_color(
         }
         None => Err(format!("invalid colour '{hex}'")),
     }
-}
-
-/// Change the wave character (0 = soft … 1 = rough).
-#[tauri::command]
-fn set_character(state: tauri::State<'_, Arc<SharedSettings>>, value: f32) {
-    state.set_character(value);
 }
 
 /// FR-13: keep the glow visible over fullscreen apps.
@@ -357,7 +348,6 @@ pub fn build_app(
             set_over_taskbar,
             set_color_mode,
             set_custom_color,
-            set_character,
             set_stay_visible_fullscreen,
             set_theme,
             set_bars_position,

@@ -38,7 +38,7 @@ impl BandTimes {
 #[derive(Debug, Clone)]
 pub struct Envelope {
     times: BandTimes,
-    /// Multiplier on both time constants (character: >1 softer, <1 rougher).
+    /// Multiplier on both time constants (>1 slower and smoother, <1 snappier).
     scale: f32,
     value: f32,
 }

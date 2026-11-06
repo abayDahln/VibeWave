@@ -74,63 +74,30 @@ pub const BASE_SPEED: f32 = 0.08;
 /// `BASE_SPEED * (1 + SPEED_DRIVE)`.
 pub const SPEED_DRIVE: f32 = 3.5;
 
-/// Wave character: `0` = soft, `1` = rough. The middle (`0.5`) is the
-/// original look, so a settings file without the key behaves as before.
-///
-/// One slider drives three things at once, so "soft" and "rough" feel
-/// different everywhere rather than in one detail:
-/// - [`smoothing_scale`]: how fast the band envelopes follow the music.
-/// - [`wave_amplitude`]: how deep the mid wave carves into the glow.
-/// - [`roughness`]: how much jagged fine detail rides on the wave.
-pub const DEFAULT_CHARACTER: f32 = 0.5;
+/// Envelope time multiplier. Fixed (was the "character" slider, now removed):
+/// the snappy value the roughest setting used. `1.0` would be neutral; `0.5`
+/// makes the band envelopes follow the music twice as fast.
+pub const SMOOTHING_SCALE: f32 = 0.5;
 
-/// Clamp a character value into `0..=1`; garbage becomes the default.
-pub fn clamp_character(c: f32) -> f32 {
-    if c.is_finite() {
-        c.clamp(0.0, 1.0)
-    } else {
-        DEFAULT_CHARACTER
-    }
-}
+/// Peak depth of the mid wave relative to the thickness. Fixed (roughest
+/// setting of the old slider): the wave carves deeper into the glow.
+pub const WAVE_AMPLITUDE: f32 = 0.6 * (0.6 + 0.8);
 
-/// Envelope time multiplier: `2^(1 - 2c)`, i.e. 2× slower when fully soft,
-/// unchanged at the middle, 2× faster when fully rough.
-pub fn smoothing_scale(character: f32) -> f32 {
-    2f32.powf(1.0 - 2.0 * clamp_character(character))
-}
-
-/// Peak depth of the mid wave relative to the thickness: 0.36 (soft) →
-/// 0.6 (middle, original) → 0.84 (rough).
-pub fn wave_amplitude(character: f32) -> f32 {
-    0.6 * (0.6 + 0.8 * clamp_character(character))
-}
-
-/// Weight of the jagged detail on the wave: 0 up to the middle, rising to 1
-/// when fully rough. The soft half only changes speed and depth.
-pub fn roughness(character: f32) -> f32 {
-    (2.0 * clamp_character(character) - 1.0).max(0.0)
-}
+/// Weight of the jagged detail riding on the wave. Fixed (roughest setting):
+/// full jagged detail mixed into the smooth sine.
+pub const ROUGHNESS: f32 = 1.0;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn middle_character_is_the_original_look() {
-        assert_eq!(smoothing_scale(DEFAULT_CHARACTER), 1.0);
-        assert!((wave_amplitude(DEFAULT_CHARACTER) - 0.6).abs() < 1e-6);
-        assert_eq!(roughness(DEFAULT_CHARACTER), 0.0);
-    }
-
-    #[test]
-    fn character_extremes_and_bad_input() {
-        assert_eq!(smoothing_scale(0.0), 2.0);
-        assert_eq!(smoothing_scale(1.0), 0.5);
-        assert_eq!(roughness(0.0), 0.0);
-        assert_eq!(roughness(1.0), 1.0);
-        assert!(wave_amplitude(1.0) > wave_amplitude(0.0));
-        assert_eq!(clamp_character(f32::NAN), DEFAULT_CHARACTER);
-        assert_eq!(clamp_character(7.0), 1.0);
+    fn fixed_wave_values_are_the_roughest_setting() {
+        // These were `smoothing_scale(1.0)`, `wave_amplitude(1.0)`,
+        // `roughness(1.0)` before the character slider was removed.
+        assert_eq!(SMOOTHING_SCALE, 0.5);
+        assert!((WAVE_AMPLITUDE - 0.84).abs() < 1e-6);
+        assert_eq!(ROUGHNESS, 1.0);
     }
 
     #[test]

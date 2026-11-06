@@ -173,12 +173,6 @@ impl SharedSettings {
         }
     }
 
-    /// Wave character, clamped to `0..=1` (0 = soft, 1 = rough).
-    pub fn set_character(&self, v: f32) {
-        let v = vibewave_core::visual::clamp_character(v);
-        self.update(|s| s.character = v);
-    }
-
     /// FR-13: keep the glow visible over fullscreen apps.
     pub fn set_stay_visible_fullscreen(&self, on: bool) {
         self.update(|s| s.stay_visible_fullscreen = on);
@@ -348,13 +342,8 @@ mod tests {
     }
 
     #[test]
-    fn character_fullscreen_and_monitor_setters() {
+    fn fullscreen_and_monitor_setters() {
         let s = SharedSettings::default();
-        assert_eq!(s.get().settings.character, 0.5);
-        s.set_character(2.0);
-        assert_eq!(s.get().settings.character, 1.0);
-        s.set_character(f32::NAN);
-        assert_eq!(s.get().settings.character, 0.5);
         s.set_stay_visible_fullscreen(true);
         assert!(s.get().settings.stay_visible_fullscreen);
         s.set_monitor(2);

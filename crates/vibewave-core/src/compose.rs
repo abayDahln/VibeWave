@@ -105,8 +105,6 @@ pub struct ComposeParams {
     pub palette: Palette,
     /// Travel direction around the perimeter.
     pub direction: Direction,
-    /// Wave character, 0 = soft … 1 = rough (see [`visual::DEFAULT_CHARACTER`]).
-    pub character: f32,
 }
 
 /// Fixed persistence for sparkles: each sparkle has a life of at most this long.
@@ -210,8 +208,8 @@ pub fn compose(
             fade,
             phase: flow.phase,
             palette,
-            wave_amp: visual::wave_amplitude(params.character),
-            roughness: visual::roughness(params.character),
+            wave_amp: visual::WAVE_AMPLITUDE,
+            roughness: visual::ROUGHNESS,
         };
         compose_edge(frame, edge, len, offset, &ctx);
     }
@@ -229,9 +227,9 @@ struct EdgeContext {
     /// Travel phase in turns (`0..1`).
     phase: f32,
     palette: Palette,
-    /// Mid-wave depth from the character (0.6 = original).
+    /// Mid-wave depth (see [`visual::WAVE_AMPLITUDE`]).
     wave_amp: f32,
-    /// Jagged-detail weight from the character (0 = smooth sine).
+    /// Jagged-detail weight (0 = smooth sine; see [`visual::ROUGHNESS`]).
     roughness: f32,
 }
 
@@ -417,7 +415,6 @@ mod tests {
             intensity: 1.0,
             palette: Palette::default_look(),
             direction: Direction::Clockwise,
-            character: visual::DEFAULT_CHARACTER,
         }
     }
 
@@ -556,7 +553,8 @@ mod tests {
             &params(),
             &input([5.0, 5.0, 5.0], 1.0, 1.0, 1.0 / 60.0),
         );
-        let max_t = 24.0 * visual::THICKNESS_SCALE * 1.4 * 1.6 + 0.01;
+        // Thickness = base × bass gain (≤1.4) × mid multiplier (≤1 + wave amp).
+        let max_t = 24.0 * visual::THICKNESS_SCALE * 1.4 * (1.0 + visual::WAVE_AMPLITUDE) + 0.01;
         for s in &frame.segments {
             assert!(
                 s.thickness <= max_t,
@@ -810,27 +808,6 @@ mod tests {
                 assert!((-1.0..=1.0).contains(&w), "theta={theta} r={r} w={w}");
             }
         }
-    }
-
-    /// Spread of segment thickness around its mean along one frame.
-    fn thickness_spread(character: f32) -> f32 {
-        let p = ComposeParams {
-            character,
-            ..params()
-        };
-        let mut frame = GlowFrame::new();
-        let (w, h) = rect();
-        compose(&mut frame, w, h, &p, &input([0.5, 1.0, 0.0], 0.0, 1.0, 0.0));
-        let t: Vec<f32> = frame.segments.iter().map(|s| s.thickness).collect();
-        let max = t.iter().cloned().fold(f32::MIN, f32::max);
-        let min = t.iter().cloned().fold(f32::MAX, f32::min);
-        max - min
-    }
-
-    #[test]
-    fn rough_character_carves_a_deeper_wave_than_soft() {
-        assert!(thickness_spread(1.0) > thickness_spread(0.5));
-        assert!(thickness_spread(0.5) > thickness_spread(0.0));
     }
 
     #[test]

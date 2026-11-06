@@ -626,19 +626,6 @@
               <span class="value" id="sensitivity-val"></span>
             </div>
           </div>
-          <div class="row">
-            <svg class="ico" viewBox="0 0 24 24">
-              <path d="M4 12h4l2-5 4 10 2-5h4" />
-            </svg>
-            <div class="labels">
-              <div class="title">Character</div>
-              <div class="sub" id="character-sub">Soft (smooth, slow) to rough (sharp, fast)</div>
-            </div>
-            <div class="control range">
-              <input type="range" id="character" min="0" max="1" step="0.05" />
-              <span class="value" id="character-val"></span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -664,8 +651,6 @@
         $("sensitivity-val").textContent = Number(dto.sensitivity).toFixed(2);
         $("over-taskbar").checked = dto.over_taskbar;
         $("stay-visible").checked = dto.stay_visible_fullscreen;
-        $("character").value = dto.character;
-        $("character-val").textContent = Number(dto.character).toFixed(2);
         $("monitor").value = String(dto.monitor);
         $("active").checked = dto.active;
         $("autostart").checked = dto.autostart;
@@ -762,11 +747,6 @@
       sensitivity.addEventListener("input", () => {
         $("sensitivity-val").textContent = Number(sensitivity.value).toFixed(2);
         invoke("set_sensitivity", { value: Number(sensitivity.value) });
-      });
-      const character = $("character");
-      character.addEventListener("input", () => {
-        $("character-val").textContent = Number(character.value).toFixed(2);
-        invoke("set_character", { value: Number(character.value) });
       });
       $("stay-visible").addEventListener("change", (e) => {
         invoke("set_stay_visible_fullscreen", { on: e.target.checked });

@@ -76,9 +76,6 @@ pub struct Settings {
     pub color_mode: ColorMode,
     /// Custom colour as linear sRGB `[r, g, b]` in 0–1.
     pub custom_color: [f32; 3],
-    /// Wave character: 0 = soft (slow, smooth), 1 = rough (fast, jagged).
-    /// 0.5 is the original look.
-    pub character: f32,
     /// Keep the glow visible while a fullscreen app covers the target monitor
     /// (PRD FR-13). Off by default: fullscreen hides the glow.
     pub stay_visible_fullscreen: bool,
@@ -118,7 +115,6 @@ impl Default for Settings {
             direction: Direction::Clockwise,
             color_mode: ColorMode::Cover,
             custom_color: DEFAULT_CUSTOM_COLOR,
-            character: 0.5,
             stay_visible_fullscreen: false,
             monitor: MONITOR_PRIMARY,
             show_tray_icon: true,
@@ -198,12 +194,6 @@ impl Settings {
                         "direction: unknown value '{value}', using default {}",
                         s.direction.id()
                     )),
-                },
-                "character" => match parse_unit(value) {
-                    Some(v) => s.character = v,
-                    None => {
-                        warnings.push(format!("character: invalid value '{value}', expected 0..1"))
-                    }
                 },
                 "stay_visible_fullscreen" => match parse_bool(value) {
                     Some(b) => s.stay_visible_fullscreen = b,
@@ -288,7 +278,6 @@ impl Settings {
              direction = {}\n\
              color_mode = {}\n\
              custom_color = {}\n\
-             character = {}\n\
              stay_visible_fullscreen = {}\n\
              monitor = {}\n\
              show_tray_icon = {}\n\
@@ -306,7 +295,6 @@ impl Settings {
             self.direction.id(),
             self.color_mode.id(),
             to_hex_color(self.custom_color),
-            self.character,
             self.stay_visible_fullscreen,
             monitor_id(self.monitor),
             self.show_tray_icon,
@@ -338,7 +326,7 @@ fn parse_positive(v: &str) -> Option<f32> {
     }
 }
 
-/// A number in `0..=1` (the character slider).
+/// A number in `0..=1` (a unit-range slider).
 fn parse_unit(v: &str) -> Option<f32> {
     let n: f32 = v.parse().ok()?;
     (n.is_finite() && (0.0..=1.0).contains(&n)).then_some(n)
@@ -526,7 +514,6 @@ future_key = whatever
             direction: Direction::CounterClockwise,
             color_mode: ColorMode::Custom,
             custom_color: [1.0, 0.0, 128.0 / 255.0],
-            character: 0.8,
             stay_visible_fullscreen: true,
             monitor: 2,
             show_tray_icon: false,
@@ -546,7 +533,6 @@ future_key = whatever
         assert_eq!(parsed.sensitivity, original.sensitivity);
         assert_eq!(parsed.direction, original.direction);
         assert_eq!(parsed.color_mode, original.color_mode);
-        assert_eq!(parsed.character, original.character);
         assert_eq!(
             parsed.stay_visible_fullscreen,
             original.stay_visible_fullscreen
@@ -583,14 +569,12 @@ future_key = whatever
     }
 
     #[test]
-    fn parses_character_and_rejects_out_of_range() {
-        let (s, w) = Settings::parse("character = 0");
-        assert_eq!(s.character, 0.0);
-        assert!(w.is_empty());
-        let (s, w) = Settings::parse("character = 1.5");
-        assert_eq!(s.character, 0.5);
-        assert_eq!(w.len(), 1);
-        assert!(w[0].contains("character"));
+    fn legacy_character_key_is_ignored() {
+        // The Character option was removed (the wave is fixed at its roughest
+        // look); an older file's key must not warn or break parsing.
+        let (s, w) = Settings::parse("character = 0.2\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(s, Settings::default());
     }
 
     #[test]

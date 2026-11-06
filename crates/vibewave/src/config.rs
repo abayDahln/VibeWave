@@ -37,13 +37,12 @@ pub fn load() -> Settings {
     }
     crate::log::info(&format!(
         "settings: theme={} color_mode={} over_taskbar={} thickness_px={} sensitivity={} \
-         character={} stay_visible_fullscreen={} monitor={} show_tray_icon={}",
+         stay_visible_fullscreen={} monitor={} show_tray_icon={}",
         settings.theme.id(),
         settings.color_mode.id(),
         settings.over_taskbar,
         settings.thickness_px,
         settings.sensitivity,
-        settings.character,
         settings.stay_visible_fullscreen,
         settings.monitor,
         settings.show_tray_icon

@@ -221,11 +221,10 @@ pub fn run(
                     intensity: current.settings.intensity,
                     palette: current.palette,
                     direction: current.settings.direction,
-                    character: current.settings.character,
                 };
-                // Latest raw levels → per-frame smoothing (speed set by the
-                // character) → composition.
-                env.set_time_scale(visual::smoothing_scale(current.settings.character));
+                // Latest raw levels → per-frame smoothing → composition. The
+                // smoothing time scale is fixed (was the Character slider).
+                env.set_time_scale(visual::SMOOTHING_SCALE);
                 let smoothed = env.update(bass, mid, treble, dt);
                 let t_s = start.elapsed().as_secs_f32();
 
