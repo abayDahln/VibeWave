@@ -88,6 +88,8 @@ fn run_loop(shared: &Shared) {
     let mut analyzer: Option<BandAnalyzer> = None;
     // Reused bar-spectrum buffer (no per-poll allocation).
     let mut spectrum = [0.0f32; vibewave_core::bars::SPECTRUM_BINS];
+    // Time of the previous spectrum update, for the envelope's `dt`.
+    let mut last_spectrum = Instant::now();
     let mut silence = SilenceDetector::new(0.0);
     let start = Instant::now();
     let mut last_device_check = Instant::now();
@@ -151,8 +153,11 @@ fn run_loop(shared: &Shared) {
             if had_packet && a.has_data() {
                 levels = a.analyze();
                 // Per-bar spectrum for the Bars theme, published alongside the
-                // three band levels (lock-free, no allocation).
-                a.spectrum(&mut spectrum);
+                // three band levels (lock-free, no allocation). `dt` paces the
+                // per-slot attack/release envelope.
+                let dt = last_spectrum.elapsed().as_secs_f32();
+                last_spectrum = Instant::now();
+                a.spectrum(&mut spectrum, dt);
                 shared.levels.store_spectrum(&spectrum);
             }
             // Silence transition (resume fires immediately on loud packets).

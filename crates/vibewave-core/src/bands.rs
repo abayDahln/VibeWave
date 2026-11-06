@@ -38,6 +38,16 @@ const NOISE_FLOOR: f32 = 2e-4;
 /// loud passage keeps the glow scaled down for a moment instead of flickering.
 const PEAK_DECAY: f32 = 0.995;
 
+/// Floor for the bar-spectrum normaliser: below this the per-slot peak is
+/// treated as silence, so noise cannot be amplified into full-height bars.
+const PEAK_FLOOR: f32 = 0.05;
+
+/// Bar-spectrum attack time in seconds: how fast a bar rises toward the music.
+const SPECTRUM_ATTACK_S: f32 = 0.030;
+/// Bar-spectrum release time in seconds: how gently a bar falls. Longer than the
+/// attack so the motion reads as smooth rather than jittery.
+const SPECTRUM_RELEASE_S: f32 = 0.150;
+
 /// One analysed block: three levels in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BandLevels {
@@ -72,6 +82,8 @@ pub struct BandAnalyzer {
     sensitivity: f32,
     /// Adaptive peak per bar-spectrum slot (see [`BandAnalyzer::spectrum`]).
     bar_peaks: [f32; crate::bars::SPECTRUM_BINS],
+    /// Smoothed bar-spectrum value per slot (the attack/release state).
+    bar_smooth: [f32; crate::bars::SPECTRUM_BINS],
 }
 
 impl BandAnalyzer {
@@ -112,6 +124,7 @@ impl BandAnalyzer {
             peak: NOISE_FLOOR,
             sensitivity: valid_sensitivity(sensitivity),
             bar_peaks: [NOISE_FLOOR; crate::bars::SPECTRUM_BINS],
+            bar_smooth: [0.0; crate::bars::SPECTRUM_BINS],
         }
     }
 
@@ -197,13 +210,22 @@ impl BandAnalyzer {
     }
 
     /// Fill `out` with a per-bar spectrum: one level in `[0, 1]` per slot,
-    /// mapping slot `i` of `out.len()` to a log-spread frequency bin (≈40 Hz to
-    /// ≈16 kHz, so bass does not dominate). Each slot is normalised against its own
-    /// adaptive peak so quiet and loud passages both fill the bars; the peaks decay
-    /// slowly so the bars do not flicker.
+    /// mapping slot `i` of `out.len()` to a log-spread frequency band (≈40 Hz to
+    /// ≈16 kHz, so bass does not dominate).
+    ///
+    /// To keep the bars steady instead of jittery ("grasak-grusuk"), each slot is
+    /// smoothed twice:
+    /// 1. **Band averaging** — the magnitude is averaged over a short run of bins
+    ///    around the target, so a single noisy FFT bin cannot swing a bar.
+    /// 2. **Adaptive peak with a floor** — the level is normalised against a slow
+    ///    per-slot peak (`max(PEAK_FLOOR, peak)`) so quiet and loud passages both
+    ///    fill the bars, but a near-silent peak cannot amplify noise.
+    /// 3. **Attack/release envelope** per slot (`dt`-based, frame-rate
+    ///    independent): bars rise quickly and fall gently.
     ///
     /// `out` is written in place (no allocation), so the audio thread can call it.
-    pub fn spectrum(&mut self, out: &mut [f32]) {
+    /// `dt` is the seconds since the previous call.
+    pub fn spectrum(&mut self, out: &mut [f32], dt: f32) {
         let n = out.len();
         if n == 0 {
             return;
@@ -211,24 +233,58 @@ impl BandAnalyzer {
         let nyq = self.sample_rate * 0.5;
         let bins = self.buffer.len();
         let peak_len = self.bar_peaks.len();
+        let dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            1.0 / 60.0
+        };
         for (i, slot) in out.iter_mut().enumerate() {
             let t = i as f32 / (n - 1).max(1) as f32;
             // 40 Hz → 16 kHz, log-spread.
             let f = 40.0 * (16_000.0f32 / 40.0).powf(t.clamp(0.0, 1.0));
-            let bin = ((f / nyq * bins as f32).round() as usize).clamp(1, bins.saturating_sub(1));
-            let mag = self.buffer.get(bin).map_or(0.0, |c| c.re.hypot(c.im));
-            // Adaptive peak per slot (the slot count is fixed at construction).
-            let mut peak = self.bar_peaks[if peak_len == 0 { 0 } else { i % peak_len }];
-            if mag > peak {
-                peak = mag;
+            let bin = (f / nyq * bins as f32).round() as usize;
+            // Average a small band of bins around the target so a single noisy
+            // bin cannot make the bar jump. The band widens with frequency so
+            // high (sparse-energy) bins are averaged over more of them.
+            let half = (1 + (bin / 48)).min(6);
+            let lo = bin.saturating_sub(half).max(1);
+            let hi = (bin + half + 1).min(bins);
+            let mag = if lo < hi {
+                let sum: f32 = self.buffer[lo..hi].iter().map(|c| c.re.hypot(c.im)).sum();
+                sum / (hi - lo) as f32
             } else {
-                peak = (peak * PEAK_DECAY).max(NOISE_FLOOR);
-            }
-            if peak_len > 0 {
-                self.bar_peaks[i % peak_len] = peak;
-            }
-            let norm = if peak > NOISE_FLOOR { mag / peak } else { 0.0 };
-            *slot = (norm * self.sensitivity).clamp(0.0, 1.0);
+                0.0
+            };
+
+            let idx = i % peak_len.max(1);
+            // Adaptive peak: jump up immediately, decay slowly; floor keeps a
+            // near-silent slot from amplifying noise into a full bar.
+            let mut peak = self.bar_peaks[idx];
+            peak = if mag > peak {
+                mag
+            } else {
+                (peak * PEAK_DECAY).max(NOISE_FLOOR)
+            };
+            self.bar_peaks[idx] = peak;
+            let scale = peak.max(PEAK_FLOOR);
+            let target = (mag / scale * self.sensitivity).clamp(0.0, 1.0);
+
+            // Attack/release envelope: fast rise, gentle fall, frame-rate
+            // independent (`1 - exp(-dt / tau)`).
+            let tau = if target > self.bar_smooth[idx] {
+                SPECTRUM_ATTACK_S
+            } else {
+                SPECTRUM_RELEASE_S
+            };
+            let coeff = 1.0 - (-dt / tau).exp();
+            let v = self.bar_smooth[idx] + (target - self.bar_smooth[idx]) * coeff;
+            let v = if v.is_finite() {
+                v.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            self.bar_smooth[idx] = v;
+            *slot = v;
         }
     }
 
@@ -420,18 +476,19 @@ mod tests {
     #[test]
     fn spectrum_is_bounded_and_filled() {
         let mut a = BandAnalyzer::new(48_000, 1.0);
-        let s = sine(1_000.0, 48_000, FFT_SIZE * 4);
+        let s = sine(1_000.0, 48_000, FFT_SIZE);
         a.push_interleaved(&s, 1);
-        for _ in 0..5 {
-            a.analyze();
-        }
         let mut spec = [0.0f32; crate::bars::SPECTRUM_BINS];
-        a.spectrum(&mut spec);
+        // Run several polls so the envelope settles toward the tone.
+        for _ in 0..200 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
         assert!(spec
             .iter()
             .all(|v| (0.0..=1.0).contains(v) && v.is_finite()));
         // A tone produces some energy somewhere, not a flat zero field.
-        assert!(spec.iter().any(|&v| v > 0.1), "{spec:?}");
+        assert!(spec.iter().any(|&v| v > 0.2), "{spec:?}");
     }
 
     #[test]
@@ -440,8 +497,64 @@ mod tests {
         a.push_interleaved(&[0.0; FFT_SIZE], 1);
         a.analyze();
         let mut spec = [1.0f32; crate::bars::SPECTRUM_BINS];
-        a.spectrum(&mut spec);
+        a.spectrum(&mut spec, 1.0 / 100.0);
         assert!(spec.iter().all(|&v| v < 0.01), "{spec:?}");
+    }
+
+    #[test]
+    fn spectrum_release_is_smoother_than_attack_kick() {
+        // Bars must fall back gently after the tone stops, not snap to zero.
+        let mut a = BandAnalyzer::new(48_000, 1.0);
+        let s = sine(1_000.0, 48_000, FFT_SIZE);
+        a.push_interleaved(&s, 1);
+        let mut spec = [0.0f32; crate::bars::SPECTRUM_BINS];
+        for _ in 0..200 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
+        let peak_before = spec.iter().cloned().fold(0.0f32, f32::max);
+        assert!(peak_before > 0.2, "tone should fill some bars");
+
+        // Feed silence and take one short poll: the bars should still be up
+        // (released), not already collapsed to zero.
+        a.push_interleaved(&[0.0; FFT_SIZE], 1);
+        a.analyze();
+        a.spectrum(&mut spec, 1.0 / 100.0);
+        let after = spec.iter().cloned().fold(0.0f32, f32::max);
+        assert!(
+            after > peak_before * 0.5,
+            "release too abrupt: {after} vs {peak_before}"
+        );
+        // Several polls later it has fallen near zero.
+        for _ in 0..50 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
+        assert!(spec.iter().cloned().fold(0.0f32, f32::max) < 0.05);
+    }
+
+    #[test]
+    fn spectrum_is_steady_for_a_constant_tone() {
+        // A steady tone must give a steady bar (no large frame-to-frame jumps),
+        // which is what stops the "grasak-grusuk" jitter.
+        let mut a = BandAnalyzer::new(48_000, 1.0);
+        let s = sine(1_000.0, 48_000, FFT_SIZE);
+        a.push_interleaved(&s, 1);
+        let mut spec = [0.0f32; crate::bars::SPECTRUM_BINS];
+        for _ in 0..30 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
+        let mut max_jump: f32 = 0.0;
+        for _ in 0..40 {
+            let prev = spec;
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+            for i in 0..spec.len() {
+                max_jump = max_jump.max((spec[i] - prev[i]).abs());
+            }
+        }
+        assert!(max_jump < 0.12, "bars jitter too much: {max_jump}");
     }
 
     #[test]
@@ -451,7 +564,7 @@ mod tests {
         a.push_interleaved(&s, 1);
         a.analyze();
         let mut empty: [f32; 0] = [];
-        a.spectrum(&mut empty); // must not panic
+        a.spectrum(&mut empty, 1.0 / 60.0); // must not panic
     }
 
     #[test]
