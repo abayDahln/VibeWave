@@ -150,7 +150,11 @@ fn run_loop(shared: &Shared) {
                 failed = Some(e);
             }
 
-            if had_packet && a.has_data() {
+            // "Silent" means no packet arrived, or the packets are quiet. WASAPI
+            // loopback keeps sending silent packets while paused, so the packet
+            // flag alone is not enough to detect a pause.
+            let quiet = !had_packet || loudest <= vibewave_core::silence::SILENCE_RMS;
+            if had_packet && !quiet && a.has_data() {
                 levels = a.analyze();
                 // Per-bar spectrum for the Bars theme, published alongside the
                 // three band levels (lock-free, no allocation). `dt` paces the
@@ -158,6 +162,14 @@ fn run_loop(shared: &Shared) {
                 let dt = last_spectrum.elapsed().as_secs_f32();
                 last_spectrum = Instant::now();
                 a.spectrum(&mut spectrum, dt);
+                shared.levels.store_spectrum(&spectrum);
+            } else {
+                // Paused/stopped (no audio): hold briefly, then collapse the bars
+                // so the beat does not freeze and starts from the bottom when
+                // audio returns.
+                let dt = last_spectrum.elapsed().as_secs_f32();
+                last_spectrum = Instant::now();
+                a.decay_spectrum(&mut spectrum, dt);
                 shared.levels.store_spectrum(&spectrum);
             }
             // Silence transition (resume fires immediately on loud packets).

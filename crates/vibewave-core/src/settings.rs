@@ -74,8 +74,15 @@ pub struct Settings {
     pub sensitivity: f32,
     pub direction: Direction,
     pub color_mode: ColorMode,
-    /// Custom colour as linear sRGB `[r, g, b]` in 0–1.
+    /// Custom colour as linear sRGB `[r, g, b]` in 0–1. Kept as the first entry
+    /// of [`Settings::custom_colors`] for backward compatibility.
     pub custom_color: [f32; 3],
+    /// Custom colour list (linear sRGB), the first `custom_color_count` entries
+    /// are valid. Used by the Bars multi-colour modes and by `Custom` colour
+    /// mode in general. At most [`MAX_CUSTOM_COLORS`].
+    pub custom_colors: [[f32; 3]; MAX_CUSTOM_COLORS],
+    /// Number of valid entries in `custom_colors` (at least 1).
+    pub custom_color_count: usize,
     /// Keep the glow visible while a fullscreen app covers the target monitor
     /// (PRD FR-13). Off by default: fullscreen hides the glow.
     pub stay_visible_fullscreen: bool,
@@ -107,6 +114,9 @@ pub struct Settings {
 /// `monitor` value meaning "whichever monitor is primary right now".
 pub const MONITOR_PRIMARY: u32 = 0;
 
+/// Maximum colours in the user's custom colour list.
+pub const MAX_CUSTOM_COLORS: usize = 10;
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -117,6 +127,12 @@ impl Default for Settings {
             direction: Direction::Clockwise,
             color_mode: ColorMode::Cover,
             custom_color: DEFAULT_CUSTOM_COLOR,
+            custom_colors: {
+                let mut a = [[0.0; 3]; MAX_CUSTOM_COLORS];
+                a[0] = DEFAULT_CUSTOM_COLOR;
+                a
+            },
+            custom_color_count: 1,
             stay_visible_fullscreen: false,
             monitor: MONITOR_PRIMARY,
             show_tray_icon: true,
@@ -186,9 +202,29 @@ impl Settings {
                     )),
                 },
                 "custom_color" => match parse_hex_color(value) {
-                    Some(c) => s.custom_color = c,
+                    Some(c) => {
+                        s.custom_color = c;
+                        // Keep the list's first entry in sync.
+                        s.custom_colors[0] = c;
+                        if s.custom_color_count == 0 {
+                            s.custom_color_count = 1;
+                        }
+                    }
                     None => warnings.push(format!(
                         "custom_color: invalid value '{value}', expected #rrggbb"
+                    )),
+                },
+                "custom_colors" => match parse_color_list(value) {
+                    Some(c) => {
+                        let n = c.len();
+                        for (i, col) in c.into_iter().enumerate() {
+                            s.custom_colors[i] = col;
+                        }
+                        s.custom_color_count = n;
+                        s.custom_color = s.custom_colors[0];
+                    }
+                    None => warnings.push(format!(
+                        "custom_colors: invalid value '{value}', expected #rrggbb list"
                     )),
                 },
                 "direction" => match Direction::from_id(value) {
@@ -288,6 +324,7 @@ impl Settings {
              direction = {}\n\
              color_mode = {}\n\
              custom_color = {}\n\
+             custom_colors = {}\n\
              stay_visible_fullscreen = {}\n\
              monitor = {}\n\
              show_tray_icon = {}\n\
@@ -306,6 +343,9 @@ impl Settings {
             self.direction.id(),
             self.color_mode.id(),
             to_hex_color(self.custom_color),
+            to_hex_color_list(
+                &self.custom_colors[..self.custom_color_count.clamp(1, MAX_CUSTOM_COLORS)]
+            ),
             self.stay_visible_fullscreen,
             monitor_id(self.monitor),
             self.show_tray_icon,
@@ -361,6 +401,33 @@ fn monitor_id(m: u32) -> String {
     } else {
         m.to_string()
     }
+}
+
+/// Parse a comma-separated list of `#rrggbb` colours (1–[`MAX_CUSTOM_COLORS`]).
+/// Returns `None` if the list is empty or any entry is invalid.
+pub fn parse_color_list(v: &str) -> Option<Vec<[f32; 3]>> {
+    let mut out = Vec::new();
+    for part in v.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        out.push(parse_hex_color(part)?);
+        if out.len() > MAX_CUSTOM_COLORS {
+            return None;
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Format up to [`MAX_CUSTOM_COLORS`] colours as a comma-separated `#rrggbb` list.
+pub fn to_hex_color_list(colors: &[[f32; 3]]) -> String {
+    colors
+        .iter()
+        .take(MAX_CUSTOM_COLORS)
+        .map(|c| to_hex_color(*c))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Parse `#rrggbb` (or `rrggbb`) into linear sRGB `[r, g, b]` in 0–1.
@@ -447,6 +514,48 @@ mod tests {
     }
 
     #[test]
+    fn parses_custom_colors_list() {
+        let (s, w) = Settings::parse("custom_colors = #ff0000, #00ff00 ,#0000ff");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(s.custom_color_count, 3);
+        assert!((s.custom_colors[0][0] - 1.0).abs() < 0.01);
+        assert!((s.custom_colors[1][1] - 1.0).abs() < 0.01);
+        assert!((s.custom_colors[2][2] - 1.0).abs() < 0.01);
+        // The single `custom_color` stays the first entry.
+        assert_eq!(to_hex_color(s.custom_color), "#ff0000");
+
+        // More than the maximum is rejected.
+        let ten = (0..11)
+            .map(|i| format!("#0000{:02x}", i + 1))
+            .collect::<Vec<_>>()
+            .join(",");
+        let (_s, w) = Settings::parse(&format!("custom_colors = {ten}"));
+        assert_eq!(w.len(), 1);
+        // One bad entry rejects the whole list.
+        let (_s, w) = Settings::parse("custom_colors = #ff0000, nope");
+        assert_eq!(w.len(), 1);
+    }
+
+    #[test]
+    fn custom_color_sets_the_first_list_entry() {
+        let (s, w) = Settings::parse("custom_color = #123456");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(to_hex_color(s.custom_colors[0]), "#123456");
+        assert_eq!(s.custom_color_count, 1);
+    }
+
+    #[test]
+    fn color_list_helpers_round_trip() {
+        let list = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        let text = to_hex_color_list(&list);
+        let parsed = parse_color_list(&text).unwrap();
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(to_hex_color(parsed[0]), "#ff0000");
+        assert!(parse_color_list("").is_none());
+        assert!(parse_color_list("#fff").is_none());
+    }
+
+    #[test]
     fn invalid_custom_color_warns_and_keeps_default() {
         let (s, w) = Settings::parse("custom_color = notacolor");
         assert_eq!(s.custom_color, DEFAULT_CUSTOM_COLOR);
@@ -526,6 +635,14 @@ future_key = whatever
             direction: Direction::CounterClockwise,
             color_mode: ColorMode::Custom,
             custom_color: [1.0, 0.0, 128.0 / 255.0],
+            custom_colors: {
+                let mut a = [[0.0; 3]; MAX_CUSTOM_COLORS];
+                a[0] = [1.0, 0.0, 128.0 / 255.0];
+                a[1] = [0.0, 1.0, 0.0];
+                a[2] = [0.0, 0.0, 1.0];
+                a
+            },
+            custom_color_count: 3,
             stay_visible_fullscreen: true,
             monitor: 2,
             show_tray_icon: false,
@@ -560,6 +677,13 @@ future_key = whatever
         assert_eq!(parsed.bars_beat_response, original.bars_beat_response);
         assert_eq!(parsed.bars_color_mode, original.bars_color_mode);
         assert_eq!(parsed.bars_rounded, original.bars_rounded);
+        assert_eq!(parsed.custom_color_count, original.custom_color_count);
+        for i in 0..original.custom_color_count {
+            assert_eq!(
+                to_hex_color(parsed.custom_colors[i]),
+                to_hex_color(original.custom_colors[i])
+            );
+        }
         assert_eq!(
             to_hex_color(parsed.custom_color),
             to_hex_color(original.custom_color)
@@ -569,16 +693,23 @@ future_key = whatever
         // representable in 8-bit hex, so compare it as hex.
         let (d, w) = Settings::parse(&Settings::default().to_ini());
         assert!(w.is_empty(), "{w:?}");
-        assert_eq!(
-            Settings {
-                custom_color: DEFAULT_CUSTOM_COLOR,
-                ..d
-            },
-            Settings::default()
-        );
+        let dflt = Settings::default();
         assert_eq!(
             to_hex_color(d.custom_color),
             to_hex_color(DEFAULT_CUSTOM_COLOR)
+        );
+        assert_eq!(
+            to_hex_color(d.custom_colors[0]),
+            to_hex_color(dflt.custom_colors[0])
+        );
+        // Everything else matches the default exactly.
+        assert_eq!(
+            Settings {
+                custom_color: DEFAULT_CUSTOM_COLOR,
+                custom_colors: dflt.custom_colors,
+                ..d
+            },
+            dflt
         );
     }
 

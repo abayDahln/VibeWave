@@ -48,6 +48,14 @@ const SPECTRUM_ATTACK_S: f32 = 0.030;
 /// attack so the motion reads as smooth rather than jittery.
 const SPECTRUM_RELEASE_S: f32 = 0.150;
 
+/// How long the bars are held after the music pauses before they start to fall.
+/// Short, so a pause reads as responsive rather than "stuck".
+const PAUSE_HOLD_S: f32 = 1.0;
+/// How fast the bars then collapse to nothing once the hold has elapsed. Fast,
+/// so the bars visibly shrink right after the hold and are gone within a few
+/// seconds (well inside the user's ~5 s expectation).
+const PAUSE_FALL_S: f32 = 0.15;
+
 /// One analysed block: three levels in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BandLevels {
@@ -84,6 +92,8 @@ pub struct BandAnalyzer {
     bar_peaks: [f32; crate::bars::SPECTRUM_BINS],
     /// Smoothed bar-spectrum value per slot (the attack/release state).
     bar_smooth: [f32; crate::bars::SPECTRUM_BINS],
+    /// Seconds of continuous quiet/no-audio, driving the pause behaviour.
+    quiet_s: f32,
 }
 
 impl BandAnalyzer {
@@ -125,6 +135,7 @@ impl BandAnalyzer {
             sensitivity: valid_sensitivity(sensitivity),
             bar_peaks: [NOISE_FLOOR; crate::bars::SPECTRUM_BINS],
             bar_smooth: [0.0; crate::bars::SPECTRUM_BINS],
+            quiet_s: 0.0,
         }
     }
 
@@ -238,6 +249,8 @@ impl BandAnalyzer {
         } else {
             1.0 / 60.0
         };
+        // Audio is present: clear the pause timer.
+        self.quiet_s = 0.0;
         for (i, slot) in out.iter_mut().enumerate() {
             let t = i as f32 / (n - 1).max(1) as f32;
             // 40 Hz → 16 kHz, log-spread.
@@ -284,6 +297,42 @@ impl BandAnalyzer {
                 0.0
             };
             self.bar_smooth[idx] = v;
+            *slot = v;
+        }
+    }
+
+    /// Collapse the bar spectrum when the music pauses (quiet packets or no
+    /// packets at all).
+    ///
+    /// Behaviour after the sound stops:
+    /// 1. **Hold** for `PAUSE_HOLD_S` (~1 s) — the bars stay put, so a momentary
+    ///    dip does not make them flutter.
+    /// 2. **Fall fast** with time constant `PAUSE_FALL_S` once the hold elapses,
+    ///    so the bars clearly shrink right after the hold and reach zero within a
+    ///    few seconds (well inside ~5 s).
+    ///
+    /// `dt` is the seconds since the previous call. Must only be called while the
+    /// music is quiet — [`BandAnalyzer::spectrum`] resets the timer otherwise.
+    pub fn decay_spectrum(&mut self, out: &mut [f32], dt: f32) {
+        let dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            1.0 / 60.0
+        };
+        self.quiet_s += dt;
+        if self.quiet_s < PAUSE_HOLD_S {
+            // Still within the hold: report the current (frozen) values.
+            for (slot, state) in out.iter_mut().zip(self.bar_smooth.iter()) {
+                *slot = *state;
+            }
+            return;
+        }
+        // Past the hold: collapse quickly.
+        let coeff = 1.0 - (-dt / PAUSE_FALL_S).exp();
+        for (slot, state) in out.iter_mut().zip(self.bar_smooth.iter_mut()) {
+            let v = *state * (1.0 - coeff);
+            let v = if v.is_finite() && v > 0.0005 { v } else { 0.0 };
+            *state = v;
             *slot = v;
         }
     }
@@ -555,6 +604,96 @@ mod tests {
             }
         }
         assert!(max_jump < 0.12, "bars jitter too much: {max_jump}");
+    }
+
+    #[test]
+    fn decay_holds_then_falls_to_zero() {
+        let mut a = BandAnalyzer::new(48_000, 1.0);
+        let s = sine(1_000.0, 48_000, FFT_SIZE);
+        a.push_interleaved(&s, 1);
+        let mut spec = [0.0f32; crate::bars::SPECTRUM_BINS];
+        for _ in 0..200 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
+        let peak = spec.iter().cloned().fold(0.0f32, f32::max);
+        assert!(peak > 0.2);
+
+        // During the hold (~1 s) the bars stay put.
+        for _ in 0..90 {
+            a.decay_spectrum(&mut spec, 1.0 / 100.0);
+        }
+        let during_hold = spec.iter().cloned().fold(0.0f32, f32::max);
+        assert!(
+            (during_hold - peak).abs() < 0.02,
+            "bars must hold during the grace: {during_hold} vs {peak}"
+        );
+
+        // After the hold they collapse quickly, and are effectively gone within a
+        // few seconds, never below zero.
+        for _ in 0..400 {
+            a.decay_spectrum(&mut spec, 1.0 / 100.0);
+            assert!(spec
+                .iter()
+                .all(|v| (0.0..=1.0).contains(v) && v.is_finite()));
+        }
+        assert!(spec.iter().cloned().fold(0.0f32, f32::max) < 0.02);
+    }
+
+    #[test]
+    fn decay_is_quick_right_after_the_hold() {
+        // The user wants the bars to visibly shrink right after the ~1 s delay.
+        let mut a = BandAnalyzer::new(48_000, 1.0);
+        let s = sine(1_000.0, 48_000, FFT_SIZE);
+        a.push_interleaved(&s, 1);
+        let mut spec = [0.0f32; crate::bars::SPECTRUM_BINS];
+        for _ in 0..200 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
+        let peak = spec.iter().cloned().fold(0.0f32, f32::max);
+        // Cross the hold (~1 s), then a few more polls should drop it well below
+        // half — the shrink is fast once the hold ends.
+        for _ in 0..110 {
+            a.decay_spectrum(&mut spec, 1.0 / 100.0);
+        }
+        let after = spec.iter().cloned().fold(0.0f32, f32::max);
+        assert!(
+            after < peak * 0.6,
+            "should shrink fast after hold: {after}/{peak}"
+        );
+    }
+
+    #[test]
+    fn decay_then_resume_starts_from_the_bottom() {
+        let mut a = BandAnalyzer::new(48_000, 1.0);
+        let s = sine(1_000.0, 48_000, FFT_SIZE);
+        a.push_interleaved(&s, 1);
+        let mut spec = [0.0f32; crate::bars::SPECTRUM_BINS];
+        for _ in 0..200 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
+        // Pause: decay well past the hold so the bars are actually at zero.
+        for _ in 0..300 {
+            a.decay_spectrum(&mut spec, 1.0 / 100.0);
+        }
+        // Resume: the first poll must start well below full and build up, not
+        // jump straight to the top.
+        a.analyze();
+        a.spectrum(&mut spec, 1.0 / 100.0);
+        let first = spec.iter().cloned().fold(0.0f32, f32::max);
+        assert!(
+            first < 0.5,
+            "bars must rise from the bottom on resume: {first}"
+        );
+        // After the attack settles, the bar is clearly higher than that first step.
+        for _ in 0..100 {
+            a.analyze();
+            a.spectrum(&mut spec, 1.0 / 100.0);
+        }
+        let settled = spec.iter().cloned().fold(0.0f32, f32::max);
+        assert!(settled > first, "bars should build up after resume");
     }
 
     #[test]

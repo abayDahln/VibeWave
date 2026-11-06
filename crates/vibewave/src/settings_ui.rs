@@ -34,6 +34,8 @@ pub struct SettingsDto {
     pub over_taskbar: bool,
     pub color_mode: String,
     pub custom_color: String,
+    /// The custom colour list (`#rrggbb` strings), the first is `custom_color`.
+    pub custom_colors: Vec<String>,
     /// Hex of the palette currently painted (cover art, custom, or default).
     pub active_color: String,
     /// True when the active colour comes from cover art (for the UI hint).
@@ -80,6 +82,13 @@ impl SettingsDto {
             over_taskbar: live.settings.over_taskbar,
             color_mode: live.settings.color_mode.id().to_string(),
             custom_color: to_hex_color(live.settings.custom_color),
+            custom_colors: live.settings.custom_colors[..live
+                .settings
+                .custom_color_count
+                .clamp(1, vibewave_core::settings::MAX_CUSTOM_COLORS)]
+                .iter()
+                .map(|c| to_hex_color(*c))
+                .collect(),
             active_color: to_hex_color(live.palette.at(0.0)),
             active_from_cover: live.palette_from_cover,
             stay_visible_fullscreen: live.settings.stay_visible_fullscreen,
@@ -185,6 +194,27 @@ fn set_custom_color(
         }
         None => Err(format!("invalid colour '{hex}'")),
     }
+}
+
+/// Replace the custom colour list (1–10 `#rrggbb` strings). The first entry is
+/// also the single `custom_color`.
+#[tauri::command]
+fn set_custom_colors(
+    state: tauri::State<'_, Arc<SharedSettings>>,
+    colors: Vec<String>,
+) -> Result<(), String> {
+    let mut parsed = Vec::with_capacity(colors.len());
+    for hex in &colors {
+        match vibewave_core::settings::parse_hex_color(hex) {
+            Some(c) => parsed.push(c),
+            None => return Err(format!("invalid colour '{hex}'")),
+        }
+    }
+    if parsed.is_empty() {
+        return Err("colour list cannot be empty".to_string());
+    }
+    state.set_custom_colors(parsed);
+    Ok(())
 }
 
 /// FR-13: keep the glow visible over fullscreen apps.
@@ -357,6 +387,7 @@ pub fn build_app(
             set_over_taskbar,
             set_color_mode,
             set_custom_color,
+            set_custom_colors,
             set_stay_visible_fullscreen,
             set_theme,
             set_bars_position,

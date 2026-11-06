@@ -42,16 +42,26 @@ pub const SENSITIVITY_MAX: f32 = 3.0;
 /// default look.
 pub fn resolve_palette(
     mode: ColorMode,
-    custom: [f32; 3],
+    settings: &Settings,
     cover: Option<Palette>,
 ) -> (Palette, bool) {
+    // The user's custom list (at least one colour) — used in Custom mode and as
+    // a fallback when cover art is unavailable.
+    let custom = Palette::new(&settings.custom_colors[..custom_count(settings)]);
     match mode {
-        ColorMode::Custom => (Palette::single(custom), false),
+        ColorMode::Custom => (custom, false),
         ColorMode::Cover => match cover {
             Some(p) if !p.is_empty() => (p, true),
-            _ => (Palette::single(custom), false),
+            _ => (custom, false),
         },
     }
+}
+
+/// Number of valid custom colours (always 1..=MAX_CUSTOM_COLORS).
+fn custom_count(settings: &Settings) -> usize {
+    settings
+        .custom_color_count
+        .clamp(1, vibewave_core::settings::MAX_CUSTOM_COLORS)
 }
 
 /// Thread-safe holder the render loop reads each frame and commands write.
@@ -82,7 +92,7 @@ impl SharedSettings {
         match self.inner.lock() {
             Ok(g) => {
                 let (palette, from_cover) =
-                    resolve_palette(g.settings.color_mode, g.settings.custom_color, g.cover);
+                    resolve_palette(g.settings.color_mode, &g.settings, g.cover);
                 LiveSettings {
                     settings: g.settings,
                     palette,
@@ -94,7 +104,7 @@ impl SharedSettings {
             // rather than panicking the render thread.
             Err(_) => {
                 let s = Settings::default();
-                let (palette, from_cover) = resolve_palette(s.color_mode, s.custom_color, None);
+                let (palette, from_cover) = resolve_palette(s.color_mode, &s, None);
                 LiveSettings {
                     settings: s,
                     palette,
@@ -129,7 +139,41 @@ impl SharedSettings {
     }
 
     pub fn set_custom_color(&self, color: [f32; 3]) {
-        self.update(|s| s.custom_color = color);
+        self.update(|s| {
+            s.custom_color = color;
+            // The single picker edits the first entry of the list.
+            s.custom_colors[0] = color;
+            if s.custom_color_count == 0 {
+                s.custom_color_count = 1;
+            }
+        });
+    }
+
+    /// Replace the whole custom colour list (1..=[`MAX_CUSTOM_COLORS`] colours).
+    /// An empty list is ignored (the list always keeps at least one colour).
+    pub fn set_custom_colors(&self, colors: Vec<[f32; 3]>) {
+        if colors.is_empty() {
+            return;
+        }
+        self.update(|s| {
+            let mut list = [[0.0f32; 3]; vibewave_core::settings::MAX_CUSTOM_COLORS];
+            let n = colors.len().min(vibewave_core::settings::MAX_CUSTOM_COLORS);
+            let clean = |c: [f32; 3]| {
+                c.map(|v| {
+                    if v.is_finite() {
+                        v.clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    }
+                })
+            };
+            for (i, c) in colors.iter().take(n).enumerate() {
+                list[i] = clean(*c);
+            }
+            s.custom_colors = list;
+            s.custom_color_count = n;
+            s.custom_color = list[0];
+        });
     }
 
     pub fn set_thickness(&self, px: f32) {
@@ -293,6 +337,27 @@ mod tests {
         let live = s.get();
         assert_eq!(live.palette.at(0.0), [0.1, 0.2, 0.3]);
         assert!(!live.palette_from_cover);
+    }
+
+    #[test]
+    fn custom_mode_uses_the_whole_colour_list() {
+        let s = SharedSettings::default();
+        s.set_custom_colors(vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+        s.set_color_mode(ColorMode::Custom);
+        let live = s.get();
+        assert_eq!(live.palette.len(), 3);
+        assert_eq!(live.palette.nth(0), [1.0, 0.0, 0.0]);
+        assert_eq!(live.palette.nth(2), [0.0, 0.0, 1.0]);
+
+        // set_custom_color edits only the first entry.
+        s.set_custom_color([0.5, 0.5, 0.5]);
+        let live = s.get();
+        assert_eq!(live.palette.nth(0), [0.5, 0.5, 0.5]);
+        assert_eq!(live.palette.nth(1), [0.0, 1.0, 0.0]);
+
+        // An empty list is ignored (always at least one colour).
+        s.set_custom_colors(vec![]);
+        assert_eq!(s.get().palette.len(), 3);
     }
 
     #[test]

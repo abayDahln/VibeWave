@@ -204,6 +204,49 @@
         border: 1px solid var(--stroke);
         flex: 0 0 auto;
       }
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: flex-end;
+        max-width: 260px;
+      }
+      .swatches .swatch-item {
+        position: relative;
+        width: 28px;
+        height: 28px;
+      }
+      .swatches .swatch-item input[type="color"] {
+        width: 100%;
+        height: 100%;
+      }
+      .swatches .swatch-remove {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: none;
+        background: #444;
+        color: #fff;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .swatches .swatch-remove:hover {
+        background: #c0392b;
+      }
+      .btn.small {
+        padding: 4px 10px;
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
       .range {
         display: flex;
         align-items: center;
@@ -380,11 +423,12 @@
               <circle cx="14.5" cy="7.5" r="1" />
             </svg>
             <div class="labels">
-              <div class="title">Custom colour</div>
-              <div class="sub" id="custom-color-sub">Used when cover art is unavailable</div>
+              <div class="title">Custom colours</div>
+              <div class="sub" id="custom-color-sub">Up to 10 colours, used by custom mode and the Bars multi-colour options</div>
             </div>
             <div class="control">
-              <input type="color" id="custom-color" />
+              <div class="swatches" id="custom-swatches"></div>
+              <button id="custom-add" class="btn small" type="button" title="Add colour">＋</button>
             </div>
           </div>
 
@@ -658,6 +702,69 @@
         return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
       }
 
+      // --- custom colour list (up to 10) --------------------------------------
+      const MAX_CUSTOM = 10;
+      // The list the user is editing; kept between refreshes so typing in a
+      // colour picker is not reset by the 2 s poll.
+      let customList = ["#d9269e"];
+      let customEditing = false;
+
+      function pushCustomColors() {
+        invoke("set_custom_colors", { colors: customList }).catch((e) =>
+          console.error(e)
+        );
+      }
+
+      function paintSwatches(colors) {
+        // Don't clobber the list while the user is actively editing it.
+        if (customEditing) return;
+        customList = colors.filter(isHex);
+        if (customList.length === 0) customList = ["#d9269e"];
+        renderSwatches();
+      }
+
+      function renderSwatches() {
+        const box = $("custom-swatches");
+        box.replaceChildren(
+          ...customList.map((hex, i) => {
+            const wrap = document.createElement("div");
+            wrap.className = "swatch-item";
+            const inp = document.createElement("input");
+            inp.type = "color";
+            inp.value = hex;
+            inp.addEventListener("input", () => {
+              customEditing = true;
+              customList[i] = inp.value;
+              pushCustomColors();
+              setTimeout(() => (customEditing = false), 800);
+            });
+            wrap.appendChild(inp);
+            if (customList.length > 1) {
+              const rm = document.createElement("button");
+              rm.type = "button";
+              rm.className = "swatch-remove";
+              rm.textContent = "\u00d7";
+              rm.addEventListener("click", () => {
+                customList.splice(i, 1);
+                renderSwatches();
+                pushCustomColors();
+              });
+              wrap.appendChild(rm);
+            }
+            return wrap;
+          })
+        );
+        $("custom-add").disabled = customList.length >= MAX_CUSTOM;
+      }
+
+      $("custom-add").addEventListener("click", () => {
+        if (customList.length >= MAX_CUSTOM) return;
+        // New swatches start from the last colour so the picker is not black.
+        customList.push(customList[customList.length - 1] || "#d9269e");
+        renderSwatches();
+        pushCustomColors();
+      });
+
       function paint(dto) {
         $("direction").value = dto.direction;
         $("color-mode").value = dto.color_mode;
@@ -703,7 +810,10 @@
         $("theme-sub").textContent = bars
           ? "Spectrum bars growing inward from the screen edges"
           : "The neon glow that frames the screen";
-        if (isHex(dto.custom_color)) $("custom-color").value = dto.custom_color;
+        const colors = Array.isArray(dto.custom_colors) && dto.custom_colors.length
+          ? dto.custom_colors
+          : [dto.custom_color];
+        paintSwatches(colors);
         if (isHex(dto.active_color)) {
           $("active-swatch").style.background = dto.active_color;
           $("active-hex").textContent = dto.active_color.toUpperCase();
@@ -745,9 +855,6 @@
       });
       $("color-mode").addEventListener("change", (e) => {
         invoke("set_color_mode", { mode: e.target.value }).then(refresh);
-      });
-      $("custom-color").addEventListener("input", (e) => {
-        invoke("set_custom_color", { hex: e.target.value }).then(refresh);
       });
       const thickness = $("thickness");
       thickness.addEventListener("input", () => {

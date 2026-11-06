@@ -28,9 +28,12 @@ pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
 }
 
 /// Maximum colours a palette holds.
-pub const MAX_PALETTE: usize = 4;
+///
+/// Raised from 4 to 10 so the Bars multi-colour modes can use a user's custom
+/// colour list (up to 10 colours). Cover extraction still produces at most 4.
+pub const MAX_PALETTE: usize = 10;
 
-/// An ordered set of 1–4 colours (linear sRGB, 0–1) the glow cycles through
+/// An ordered set of 1–10 colours (linear sRGB, 0–1) the glow cycles through
 /// around the perimeter.
 ///
 /// With one colour the frame is a single hue. With more, the colours are
@@ -43,8 +46,8 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// A palette from one to four colours. Extra colours are ignored; an empty
-    /// slice yields the default magenta.
+    /// A palette from one to [`MAX_PALETTE`] colours. Extra colours are ignored;
+    /// an empty slice yields the default magenta.
     pub fn new(colors: &[[f32; 3]]) -> Self {
         let mut out = [[0.0; 3]; MAX_PALETTE];
         let len = colors.len().clamp(1, MAX_PALETTE);
@@ -303,14 +306,14 @@ mod tests {
     }
 
     #[test]
-    fn palette_holds_at_most_four_colours() {
-        let p = Palette::new(&[
-            [0.1, 0.1, 0.1],
-            [0.2, 0.2, 0.2],
-            [0.3, 0.3, 0.3],
-            [0.4, 0.4, 0.4],
-            [0.5, 0.5, 0.5],
-        ]);
-        assert_eq!(p.len(), MAX_PALETTE);
+    fn palette_keeps_up_to_max_colours() {
+        // Fewer than MAX_PALETTE is kept as-is.
+        let few = Palette::new(&[[0.1, 0.1, 0.1], [0.2, 0.2, 0.2]]);
+        assert_eq!(few.len(), 2);
+        // More than MAX_PALETTE is truncated to MAX_PALETTE.
+        let many: Vec<[f32; 3]> = (0..MAX_PALETTE + 5)
+            .map(|i| [i as f32 / 20.0, 0.0, 0.0])
+            .collect();
+        assert_eq!(Palette::new(&many).len(), MAX_PALETTE);
     }
 }
