@@ -7,7 +7,7 @@
 //! The file's existence doubles as the "not first run" marker (PRD FR-18):
 //! the app writes it at the end of startup on the first run.
 
-use crate::bars::Position;
+use crate::bars::{BarColorMode, Position};
 use crate::visual::Direction;
 
 /// Which visual theme is painted.
@@ -94,15 +94,15 @@ pub struct Settings {
     pub bars_position: Position,
     /// Bars theme: bar thickness across the edge, in 96-DPI pixels.
     pub bars_thickness_px: f32,
-    /// Bars theme: peak bar length as a fraction of the shortest screen side.
+    /// Bars theme: peak bar length as a fraction of the shortest screen side
+    /// (UI range 0–0.20).
     pub bars_max_len_frac: f32,
-    /// Bars theme: baseline offset from the edge (fraction of the shortest side);
-    /// negative overhangs the bars outward past the edge.
-    pub bars_floor_frac: f32,
     /// Bars theme: center bias (middle of each edge reacts most), 0–1.
     pub bars_center_profile: f32,
     /// Bars theme: how strongly bar height follows the spectrum.
     pub bars_beat_response: f32,
+    /// Bars theme: how the palette maps onto the bars.
+    pub bars_color_mode: BarColorMode,
 }
 
 /// `monitor` value meaning "whichever monitor is primary right now".
@@ -125,18 +125,13 @@ impl Default for Settings {
             theme: Theme::Glow,
             bars_position: Position::All,
             bars_thickness_px: 3.0,
-            bars_max_len_frac: 0.28,
-            bars_floor_frac: 0.12,
+            bars_max_len_frac: 0.10,
             bars_center_profile: 0.6,
             bars_beat_response: 1.0,
+            bars_color_mode: BarColorMode::Off,
         }
     }
 }
-
-/// Allowed range for the Bars baseline (`bars_floor_frac`): the prototype's
-/// slider spans a mild inward gap up to a shallow outward overhang.
-pub const BARS_FLOOR_MIN: f32 = -0.10;
-pub const BARS_FLOOR_MAX: f32 = 0.35;
 
 /// Default custom colour: the neon magenta, so the field is never unset.
 pub const DEFAULT_CUSTOM_COLOR: [f32; 3] = [0.85, 0.15, 0.62];
@@ -252,10 +247,6 @@ impl Settings {
                     Some(v) => s.bars_max_len_frac = v,
                     None => warnings.push(format!("bars_max_len_frac: invalid value '{value}'")),
                 },
-                "bars_floor_frac" => match parse_finite(value) {
-                    Some(v) => s.bars_floor_frac = v,
-                    None => warnings.push(format!("bars_floor_frac: invalid value '{value}'")),
-                },
                 "bars_center_profile" => match parse_unit(value) {
                     Some(v) => s.bars_center_profile = v,
                     None => warnings.push(format!(
@@ -265,6 +256,13 @@ impl Settings {
                 "bars_beat_response" => match parse_positive(value) {
                     Some(v) => s.bars_beat_response = v,
                     None => warnings.push(format!("bars_beat_response: invalid value '{value}'")),
+                },
+                "bars_color_mode" => match BarColorMode::from_id(value) {
+                    Some(m) => s.bars_color_mode = m,
+                    None => warnings.push(format!(
+                        "bars_color_mode: unknown value '{value}', using default {}",
+                        s.bars_color_mode.id()
+                    )),
                 },
                 // Unknown keys are ignored on purpose: later features add keys
                 // and must not break older binaries.
@@ -298,9 +296,9 @@ impl Settings {
              bars_position = {}\n\
              bars_thickness_px = {}\n\
              bars_max_len_frac = {}\n\
-             bars_floor_frac = {}\n\
              bars_center_profile = {}\n\
-             bars_beat_response = {}\n",
+             bars_beat_response = {}\n\
+             bars_color_mode = {}\n",
             self.over_taskbar,
             self.thickness_px,
             self.intensity,
@@ -316,9 +314,9 @@ impl Settings {
             self.bars_position.id(),
             self.bars_thickness_px,
             self.bars_max_len_frac,
-            self.bars_floor_frac,
             self.bars_center_profile,
             self.bars_beat_response,
+            self.bars_color_mode.id(),
         )
     }
 }
@@ -338,12 +336,6 @@ fn parse_positive(v: &str) -> Option<f32> {
     } else {
         None
     }
-}
-
-/// Any finite number (the Bars baseline, which may be negative).
-fn parse_finite(v: &str) -> Option<f32> {
-    let n: f32 = v.parse().ok()?;
-    n.is_finite().then_some(n)
 }
 
 /// A number in `0..=1` (the character slider).
@@ -541,10 +533,10 @@ future_key = whatever
             theme: Theme::Bars,
             bars_position: Position::Horizontal,
             bars_thickness_px: 5.0,
-            bars_max_len_frac: 0.3,
-            bars_floor_frac: -0.05,
+            bars_max_len_frac: 0.18,
             bars_center_profile: 0.4,
             bars_beat_response: 1.5,
+            bars_color_mode: BarColorMode::ByPosition,
         };
         let (parsed, w) = Settings::parse(&original.to_ini());
         assert!(w.is_empty(), "{w:?}");
@@ -565,9 +557,9 @@ future_key = whatever
         assert_eq!(parsed.bars_position, original.bars_position);
         assert_eq!(parsed.bars_thickness_px, original.bars_thickness_px);
         assert_eq!(parsed.bars_max_len_frac, original.bars_max_len_frac);
-        assert_eq!(parsed.bars_floor_frac, original.bars_floor_frac);
         assert_eq!(parsed.bars_center_profile, original.bars_center_profile);
         assert_eq!(parsed.bars_beat_response, original.bars_beat_response);
+        assert_eq!(parsed.bars_color_mode, original.bars_color_mode);
         assert_eq!(
             to_hex_color(parsed.custom_color),
             to_hex_color(original.custom_color)
@@ -671,31 +663,42 @@ future_key = whatever
 theme = bars
 bars_position = vertical
 bars_thickness_px = 4
-bars_max_len_frac = 0.4
-bars_floor_frac = -0.08
+bars_max_len_frac = 0.18
 bars_center_profile = 0.9
 bars_beat_response = 1.8
+bars_color_mode = perbar
 ";
         let (s, w) = Settings::parse(text);
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(s.theme, Theme::Bars);
         assert_eq!(s.bars_position, Position::Vertical);
         assert_eq!(s.bars_thickness_px, 4.0);
-        assert_eq!(s.bars_max_len_frac, 0.4);
-        assert_eq!(s.bars_floor_frac, -0.08);
+        assert_eq!(s.bars_max_len_frac, 0.18);
         assert_eq!(s.bars_center_profile, 0.9);
         assert_eq!(s.bars_beat_response, 1.8);
+        assert_eq!(s.bars_color_mode, BarColorMode::PerBar);
     }
 
     #[test]
     fn invalid_bars_values_warn_and_keep_defaults() {
         let (s, w) = Settings::parse(
-            "bars_position = diagonal\nbars_thickness_px = -1\nbars_center_profile = 2\n",
+            "bars_position = diagonal\nbars_thickness_px = -1\nbars_center_profile = 2\n\
+             bars_color_mode = rainbow\n",
         );
         let d = Settings::default();
         assert_eq!(s.bars_position, d.bars_position);
         assert_eq!(s.bars_thickness_px, d.bars_thickness_px);
         assert_eq!(s.bars_center_profile, d.bars_center_profile);
-        assert_eq!(w.len(), 3, "{w:?}");
+        assert_eq!(s.bars_color_mode, d.bars_color_mode);
+        assert_eq!(w.len(), 4, "{w:?}");
+    }
+
+    #[test]
+    fn legacy_bars_floor_key_is_ignored() {
+        // The Baseline option was removed; an older file's key must not warn or
+        // break parsing.
+        let (s, w) = Settings::parse("bars_floor_frac = -0.08\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(s, Settings::default());
     }
 }

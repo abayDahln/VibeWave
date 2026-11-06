@@ -12,9 +12,9 @@
 
 use std::sync::Mutex;
 
-use vibewave_core::bars::Position;
+use vibewave_core::bars::{BarColorMode, Position, BARS_MAX_LEN_MAX, BARS_MAX_LEN_MIN};
 use vibewave_core::palette::Palette;
-use vibewave_core::settings::{ColorMode, Settings, Theme, BARS_FLOOR_MAX, BARS_FLOOR_MIN};
+use vibewave_core::settings::{ColorMode, Settings, Theme};
 use vibewave_core::visual::Direction;
 
 /// A settings snapshot plus the resolved colour palette.
@@ -215,25 +215,15 @@ impl SharedSettings {
         self.update(|s| s.bars_thickness_px = px);
     }
 
-    /// Bars theme: peak bar length as a fraction of the shortest screen side.
+    /// Bars theme: peak bar length as a fraction of the shortest screen side
+    /// (UI range 0–20%).
     pub fn set_bars_max_len_frac(&self, v: f32) {
         let v = if v.is_finite() {
-            v.clamp(0.05, 0.6)
+            v.clamp(BARS_MAX_LEN_MIN, BARS_MAX_LEN_MAX)
         } else {
-            0.28
+            0.10
         };
         self.update(|s| s.bars_max_len_frac = v);
-    }
-
-    /// Bars theme: baseline offset (fraction of the shortest side); negative
-    /// overhangs outward.
-    pub fn set_bars_floor_frac(&self, v: f32) {
-        let v = if v.is_finite() {
-            v.clamp(BARS_FLOOR_MIN, BARS_FLOOR_MAX)
-        } else {
-            0.12
-        };
-        self.update(|s| s.bars_floor_frac = v);
     }
 
     /// Bars theme: center bias, 0–1.
@@ -254,6 +244,11 @@ impl SharedSettings {
             1.0
         };
         self.update(|s| s.bars_beat_response = v);
+    }
+
+    /// Bars theme: how the palette maps onto the bars.
+    pub fn set_bars_color_mode(&self, mode: BarColorMode) {
+        self.update(|s| s.bars_color_mode = mode);
     }
 }
 
@@ -384,14 +379,16 @@ mod tests {
         assert_eq!(s.get().settings.bars_thickness_px, 3.0);
 
         s.set_bars_max_len_frac(5.0);
-        assert_eq!(s.get().settings.bars_max_len_frac, 0.6);
+        assert_eq!(s.get().settings.bars_max_len_frac, BARS_MAX_LEN_MAX);
+        s.set_bars_max_len_frac(-1.0);
+        assert_eq!(s.get().settings.bars_max_len_frac, BARS_MAX_LEN_MIN);
 
-        s.set_bars_floor_frac(-5.0);
-        assert_eq!(s.get().settings.bars_floor_frac, BARS_FLOOR_MIN);
         s.set_bars_center_profile(2.0);
         assert_eq!(s.get().settings.bars_center_profile, 1.0);
         s.set_bars_beat_response(0.0);
         assert_eq!(s.get().settings.bars_beat_response, 0.1);
+        s.set_bars_color_mode(BarColorMode::PerBar);
+        assert_eq!(s.get().settings.bars_color_mode, BarColorMode::PerBar);
     }
 
     #[test]

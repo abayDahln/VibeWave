@@ -68,12 +68,47 @@ impl Palette {
         Self::single(hsv_to_rgb(crate::visual::BASE_HUE, 0.85, 1.0))
     }
 
+    /// Ensure the palette has at least `want` distinct colours, generating
+    /// hue-rotated variants of the first colour when it has fewer. Used by the
+    /// Bars multi-colour modes so a single custom colour still yields a set.
+    /// `want` is clamped to `1..=MAX_PALETTE`.
+    pub fn with_at_least(&self, want: usize) -> Self {
+        let want = want.clamp(1, MAX_PALETTE);
+        if self.len >= want {
+            return *self;
+        }
+        let base = self.colors[0];
+        let (h, s, v) = rgb_to_hsv(base);
+        let mut colors = Vec::with_capacity(want);
+        for i in 0..want {
+            // Spread hues evenly around the circle, keeping the base first.
+            let hue = (h + (360.0 * i as f32 / want as f32)).rem_euclid(360.0);
+            colors.push(hsv_to_rgb(hue, s.max(0.35), v.max(0.55)));
+        }
+        Palette::new(&colors)
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
 
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+
+    /// The `i`-th stored colour exactly, or the first colour when `i` is out of
+    /// range. Unlike [`Palette::at`] this never interpolates and never wraps.
+    pub fn nth(&self, i: usize) -> [f32; 3] {
+        self.colors[i.min(self.len - 1)]
+    }
+
+    /// Linear interpolation (not circular) between the first and last palette
+    /// colours, used for a straight gradient between two edge colours.
+    pub fn lerp_ends(&self, t: f32) -> [f32; 3] {
+        if self.len == 1 {
+            return self.colors[0];
+        }
+        lerp3(self.colors[0], self.colors[self.len - 1], t.clamp(0.0, 1.0))
     }
 
     /// The colour at a position along the perimeter (`pos01`, wrapped to `0..1`).
@@ -97,6 +132,28 @@ impl Default for Palette {
     fn default() -> Self {
         Self::default_look()
     }
+}
+
+/// RGB (0–1) → `(hue degrees, saturation, value)`.
+fn rgb_to_hsv([r, g, b]: [f32; 3]) -> (f32, f32, f32) {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let delta = max - min;
+    let h = if delta <= f32::EPSILON {
+        0.0
+    } else if max == r {
+        60.0 * (((g - b) / delta) % 6.0)
+    } else if max == g {
+        60.0 * ((b - r) / delta + 2.0)
+    } else {
+        60.0 * ((r - g) / delta + 4.0)
+    };
+    let s = if max <= f32::EPSILON {
+        0.0
+    } else {
+        delta / max
+    };
+    (h.rem_euclid(360.0), s, max)
 }
 
 /// Linear interpolation between two colours.
@@ -194,6 +251,37 @@ mod tests {
     fn colours_are_clamped_and_sanitized() {
         let p = Palette::single([f32::NAN, 5.0, -1.0]);
         assert_eq!(p.at(0.0), [0.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn with_at_least_expands_a_single_colour() {
+        let single = Palette::single([0.9, 0.2, 0.2]);
+        let three = single.with_at_least(3);
+        assert_eq!(three.len(), 3);
+        // The base colour is kept (up to float round-trip through HSV).
+        for i in 0..3 {
+            assert!((three.nth(0)[i] - single.nth(0)[i]).abs() < 1e-4);
+        }
+        // Distinct hues.
+        assert_ne!(three.nth(0), three.nth(1));
+        assert_ne!(three.nth(1), three.nth(2));
+        // A palette that is already big enough is unchanged.
+        let two = Palette::new(&[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+        assert_eq!(two.with_at_least(2).len(), 2);
+        // Never more than MAX_PALETTE.
+        assert!(single.with_at_least(99).len() <= MAX_PALETTE);
+    }
+
+    #[test]
+    fn nth_and_lerp_ends_are_linear() {
+        let p = Palette::new(&[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]);
+        assert_eq!(p.nth(0), [0.0, 0.0, 0.0]);
+        assert_eq!(p.nth(1), [1.0, 1.0, 1.0]);
+        approx(p.lerp_ends(0.0)[0], 0.0);
+        approx(p.lerp_ends(1.0)[0], 1.0);
+        approx(p.lerp_ends(0.5)[0], 0.5);
+        // Out-of-range nth falls back to the last colour.
+        assert_eq!(p.nth(9), [1.0, 1.0, 1.0]);
     }
 
     #[test]

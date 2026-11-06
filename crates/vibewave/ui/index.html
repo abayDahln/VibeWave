@@ -498,8 +498,27 @@
               <div class="sub">Tallest a bar can reach at full level</div>
             </div>
             <div class="control range">
-              <input type="range" id="bars-maxlen" min="5" max="60" step="1" />
+              <input type="range" id="bars-maxlen" min="0" max="20" step="1" />
               <span class="value" id="bars-maxlen-val"></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <svg class="ico" viewBox="0 0 24 24">
+              <circle cx="7" cy="12" r="3.5" />
+              <circle cx="17" cy="12" r="3.5" />
+              <path d="M10.5 12h3" />
+            </svg>
+            <div class="labels">
+              <div class="title">Multi colour</div>
+              <div class="sub" id="bars-color-sub">Off: one colour. Per bar: alternating. Position: one per edge, gradient on the sides</div>
+            </div>
+            <div class="control">
+              <select id="bars-color-mode">
+                <option value="off">Off (single colour)</option>
+                <option value="perbar">Per bar (alternating)</option>
+                <option value="position">By position (edges)</option>
+              </select>
             </div>
           </div>
 
@@ -514,21 +533,6 @@
             <div class="control range">
               <input type="range" id="bars-beat" min="0.1" max="3" step="0.05" />
               <span class="value" id="bars-beat-val"></span>
-            </div>
-          </div>
-
-          <div class="row">
-            <svg class="ico" viewBox="0 0 24 24">
-              <path d="M4 20h16" />
-              <path d="M6 20V12M10 20V8M14 20V14M18 20V10" />
-            </svg>
-            <div class="labels">
-              <div class="title">Baseline</div>
-              <div class="sub">Gap between the edge and the bar base; low values overhang outward</div>
-            </div>
-            <div class="control range">
-              <input type="range" id="bars-floor" min="-10" max="35" step="1" />
-              <span class="value" id="bars-floor-val"></span>
             </div>
           </div>
 
@@ -674,8 +678,13 @@
         $("bars-maxlen-val").textContent = Math.round(dto.bars_max_len_frac * 100) + "%";
         $("bars-beat").value = dto.bars_beat_response;
         $("bars-beat-val").textContent = Number(dto.bars_beat_response).toFixed(2);
-        $("bars-floor").value = Math.round(dto.bars_floor_frac * 100);
-        $("bars-floor-val").textContent = Math.round(dto.bars_floor_frac * 100) + "%";
+        $("bars-color-mode").value = dto.bars_color_mode;
+        $("bars-color-sub").textContent =
+          dto.bars_color_mode === "off"
+            ? "Off: one colour from the cover or custom"
+            : dto.bars_color_mode === "perbar"
+              ? "Each bar alternates cover colours"
+              : "Top and bottom one colour each; left and right a gradient";
         $("bars-center").value = dto.bars_center_profile;
         $("bars-center-val").textContent = Number(dto.bars_center_profile).toFixed(2);
         // Show the theme's own settings; hide the other theme's. Intensity is
@@ -783,10 +792,8 @@
         $("bars-beat-val").textContent = Number(barsBeat.value).toFixed(2);
         invoke("set_bars_beat_response", { value: Number(barsBeat.value) });
       });
-      const barsFloor = $("bars-floor");
-      barsFloor.addEventListener("input", () => {
-        $("bars-floor-val").textContent = barsFloor.value + "%";
-        invoke("set_bars_floor_frac", { value: Number(barsFloor.value) / 100 });
+      $("bars-color-mode").addEventListener("change", (e) => {
+        invoke("set_bars_color_mode", { mode: e.target.value }).then(refresh);
       });
       const barsCenter = $("bars-center");
       barsCenter.addEventListener("input", () => {

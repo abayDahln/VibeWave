@@ -63,14 +63,19 @@ impl Position {
     }
 }
 
+/// Peak bar length as a fraction of the shortest screen side. The UI exposes
+/// this as a **0–20 %** slider (the value that reads best), and the live setter
+/// clamps to this range.
+pub const BARS_MAX_LEN_MIN: f32 = 0.0;
+pub const BARS_MAX_LEN_MAX: f32 = 0.20;
+
 /// One bar to paint: a rectangle of constant thickness spanning `outer`..`inner`
 /// along the inward axis from `edge`.
 ///
 /// `pos` is the position along the edge in pixels (0 = left for top/bottom, 0 =
 /// top for left/right); `outer`/`inner` are signed offsets from the near edge
-/// along the inward axis (inward-positive), so `outer` may be negative for an
-/// outward overhang; `thickness` is the width across the edge; `opacity` is its
-/// alpha; `color` is its linear-sRGB value (0–1).
+/// along the inward axis (inward-positive); `thickness` is the width across the
+/// edge; `opacity` is its alpha; `color` is its linear-sRGB value (0–1).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BarSegment {
     pub edge: Edge,
@@ -89,6 +94,39 @@ impl BarSegment {
     }
 }
 
+/// How the bars take colour from the palette.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BarColorMode {
+    /// Every bar uses the first palette colour.
+    #[default]
+    Off,
+    /// Each bar picks a palette colour by a static per-bar shuffle, so adjacent
+    /// bars differ ("selang-seling"/acak) but the frame is deterministic.
+    PerBar,
+    /// Colour by edge: top one colour, bottom another, and left/right a gradient
+    /// between them along the edge.
+    ByPosition,
+}
+
+impl BarColorMode {
+    pub fn id(self) -> &'static str {
+        match self {
+            BarColorMode::Off => "off",
+            BarColorMode::PerBar => "perbar",
+            BarColorMode::ByPosition => "position",
+        }
+    }
+
+    pub fn from_id(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "off" | "single" | "none" => Some(BarColorMode::Off),
+            "perbar" | "per-bar" | "bar" | "alternate" | "acak" => Some(BarColorMode::PerBar),
+            "position" | "by-position" | "edge" | "posisi" => Some(BarColorMode::ByPosition),
+            _ => None,
+        }
+    }
+}
+
 /// Tunable bar-composition parameters (the Bars-theme subset of `Settings`).
 #[derive(Debug, Clone, Copy)]
 pub struct BarsParams {
@@ -96,10 +134,6 @@ pub struct BarsParams {
     pub thickness_px: f32,
     /// Peak bar length as a fraction of the screen's shortest side.
     pub max_len_frac: f32,
-    /// Baseline offset from the edge as a fraction of the shortest side; a bar is
-    /// drawn from this offset inward. Negative overhangs the bar outward past the
-    /// edge.
-    pub floor_frac: f32,
     /// Center bias: 0 = every bar reacts equally, higher = the middle of each
     /// edge reacts more than its ends.
     pub center_profile: f32,
@@ -107,8 +141,10 @@ pub struct BarsParams {
     pub beat_response: f32,
     /// Global opacity multiplier (the Intensity control).
     pub opacity: f32,
-    /// Colour source; bars are painted with `palette.at(0)`.
+    /// Colour source (cover art, custom, or default).
     pub palette: Palette,
+    /// How the palette maps onto the bars.
+    pub color_mode: BarColorMode,
     /// Which edges to draw.
     pub position: Position,
 }
@@ -168,6 +204,50 @@ fn seed_of(edge: Edge) -> u32 {
     }
 }
 
+/// A well-mixed 32-bit hash of a bar index (the `bar_shape` mixer), used to
+/// spread colours across bars without neighbouring collisions.
+fn hash_index(i: usize) -> u32 {
+    let mut x = (i as u32).wrapping_mul(0x9e37_79b9);
+    x ^= x >> 16;
+    x = x.wrapping_mul(0x7feb_352d);
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x846c_a68b);
+    x ^= x >> 16;
+    x
+}
+
+/// Resolve one bar's colour from the palette and the colour mode.
+///
+/// - `Off`: the first palette colour for every bar.
+/// - `PerBar`: a static per-bar shuffle of the palette, so adjacent bars differ
+///   but the result is deterministic (no time term, no RNG state).
+/// - `ByPosition`: top uses palette colour 0, bottom palette colour 1 (or 0 when
+///   the palette has a single colour), and left/right interpolate 0→1 along the
+///   edge via the palette's circular interpolation.
+///
+/// `t_pos` is the normalised position of the bar along its edge.
+fn bar_color(palette: &Palette, mode: BarColorMode, edge: Edge, i: usize, t_pos: f32) -> [f32; 3] {
+    match mode {
+        BarColorMode::Off => palette.at(0.0),
+        BarColorMode::PerBar => {
+            let len = palette.len().max(1);
+            // A well-mixed hash of the bar index picks the colour, so neighbours
+            // mostly differ without a strict a-b-a-b pattern. Deterministic.
+            let pick = hash_index(i) % len as u32;
+            palette.at(pick as f32 / len as f32)
+        }
+        BarColorMode::ByPosition => match edge {
+            Edge::Top => palette.nth(0),
+            Edge::Bottom => palette.nth(1),
+            // Left/right sweep 0→1 linearly along the edge, so one corner sits at
+            // the first colour and the other at the last. (`Palette::at` is
+            // circular, which would return to the first colour at the far end,
+            // so a linear blend is used here instead.)
+            Edge::Left | Edge::Right => palette.lerp_ends(t_pos),
+        },
+    }
+}
+
 /// Compose one bar frame into `frame`.
 ///
 /// `width`/`height` are the overlay size in physical pixels; `spectrum` is the
@@ -190,8 +270,7 @@ pub fn compose_bars(
     } else {
         1.0
     };
-    let max_len = frac(params.max_len_frac, 0.28).max(0.0) * width.min(height);
-    let floor = frac(params.floor_frac, 0.0) * width.min(height);
+    let max_len = frac(params.max_len_frac, 0.10).max(0.0) * width.min(height);
     let profile = frac(params.center_profile, 0.0).clamp(0.0, 1.0);
     let response = if params.beat_response.is_finite() {
         params.beat_response.max(0.0)
@@ -203,7 +282,7 @@ pub fn compose_bars(
     } else {
         1.0
     };
-    let color = params.palette.at(0.0);
+    let palette = params.palette;
     let n_spec = spectrum.len().max(1);
     // Bar occupies half its slot; the other half is the gap.
     let spacing_factor = 2.0;
@@ -242,16 +321,17 @@ pub fn compose_bars(
             };
             let level = (level * center_weight(t_pos, profile)).clamp(0.0, 1.0);
             let grow = (level * max_len * bar_shape(i, seed)).min(max_len);
-            // Inner tip (capped at the far edge); outer end (negative = overhang).
-            let inner = (floor + grow).clamp(0.0, cap);
-            let outer = floor.min(0.0);
-            if inner - outer <= 0.0 {
+            // Baseline sits at the edge (floor 0), so a bar spans 0..grow inward,
+            // capped so it never reaches the opposite edge.
+            let inner = grow.clamp(0.0, cap);
+            if inner <= 0.0 {
                 continue;
             }
+            let color = bar_color(&palette, params.color_mode, edge, i, t_pos);
             frame.bars.push(BarSegment {
                 edge,
                 pos: i as f32 * slot + inset,
-                outer,
+                outer: 0.0,
                 inner,
                 thickness: bar_w,
                 opacity,
@@ -277,14 +357,19 @@ mod tests {
     fn params() -> BarsParams {
         BarsParams {
             thickness_px: 3.0,
-            max_len_frac: 0.28,
-            floor_frac: 0.12,
+            max_len_frac: 0.10,
             center_profile: 0.6,
             beat_response: 1.0,
             opacity: 1.0,
             palette: Palette::single([1.0, 1.0, 1.0]),
+            color_mode: BarColorMode::Off,
             position: Position::All,
         }
+    }
+
+    /// A two-colour palette (pure red / pure blue) for colour-mode tests.
+    fn two_colors() -> Palette {
+        Palette::new(&[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
     }
 
     fn spectrum_of(bins: usize, v: f32) -> Vec<f32> {
@@ -316,18 +401,11 @@ mod tests {
     }
 
     #[test]
-    fn silent_spectrum_collapses_bars_toward_the_floor() {
+    fn silent_spectrum_yields_no_bars() {
+        // Baseline is at the edge, so with no signal there is nothing to draw.
         let mut frame = BarsFrame::new();
         compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 0.0), &params());
-        // At silence only the floor stub remains; the inner tip sits at the floor.
-        let floor = 0.12 * 1080.0_f32.min(1920.0);
-        for seg in &frame.bars {
-            assert!(
-                (seg.length() - floor).abs() < 0.01,
-                "length {} should equal the floor {floor}",
-                seg.length()
-            );
-        }
+        assert!(frame.bars.is_empty(), "{:?}", frame.bars);
     }
 
     #[test]
@@ -335,13 +413,13 @@ mod tests {
         let mut frame = BarsFrame::new();
         let (w, h) = (1920.0, 1080.0);
         compose_bars(&mut frame, w, h, &spectrum_of(96, 1.0), &params());
-        let max_len = 0.28 * w.min(h);
+        let max_len = 0.10 * w.min(h);
         for seg in &frame.bars {
             assert!(rect_contains(seg, w, h), "out of bounds: {seg:?}");
-            // A bar's inner reach (length from the near edge) never exceeds floor+cap.
+            // The bar grows inward from the edge, capped at max_len.
             assert!(
-                seg.length() <= 0.12 * w.min(h) + max_len + 0.01,
-                "bar too long: {seg:?}"
+                seg.length() <= max_len + 0.01,
+                "bar too long: {seg:?} (cap {max_len})"
             );
         }
     }
@@ -395,78 +473,126 @@ mod tests {
     }
 
     #[test]
-    fn negative_floor_overhangs_outward_by_the_floor_amount() {
-        // A negative floor keeps the same growth (bar height) but moves the whole
-        // bar outward, so at silence only an outward stub of `|floor|` remains
-        // instead of nothing.
-        let base = BarsParams {
-            floor_frac: 0.0,
+    fn color_mode_off_uses_one_colour() {
+        let p = BarsParams {
+            palette: two_colors(),
+            color_mode: BarColorMode::Off,
             ..params()
         };
-        let out = BarsParams {
-            floor_frac: -0.10,
-            ..base
-        };
-        let overhang_px = 0.10 * 1080.0;
-
-        let mut silent_inside = BarsFrame::new();
-        let mut silent_over = BarsFrame::new();
-        compose_bars(
-            &mut silent_inside,
-            1920.0,
-            1080.0,
-            &spectrum_of(96, 0.0),
-            &base,
-        );
-        compose_bars(
-            &mut silent_over,
-            1920.0,
-            1080.0,
-            &spectrum_of(96, 0.0),
-            &out,
-        );
+        let mut frame = BarsFrame::new();
+        compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 1.0), &p);
+        let first = frame.bars[0].color;
         assert!(
-            silent_inside.bars.is_empty(),
-            "no floor → nothing at silence"
+            frame.bars.iter().all(|s| s.color == first),
+            "must be uniform"
         );
-        assert!(!silent_over.bars.is_empty(), "overhang → an outward stub");
-        for seg in &silent_over.bars {
-            assert!((seg.length() - overhang_px).abs() < 0.05, "{seg:?}");
-        }
+    }
 
-        // With signal, the growth (span minus the overhang) is unchanged.
-        let mut loud_inside = BarsFrame::new();
-        let mut loud_over = BarsFrame::new();
-        compose_bars(
-            &mut loud_inside,
-            1920.0,
-            1080.0,
-            &spectrum_of(96, 1.0),
-            &base,
+    #[test]
+    fn color_mode_per_bar_alternates_and_is_deterministic() {
+        let p = BarsParams {
+            palette: two_colors(),
+            color_mode: BarColorMode::PerBar,
+            ..params()
+        };
+        let mut a = BarsFrame::new();
+        let mut b = BarsFrame::new();
+        compose_bars(&mut a, 1920.0, 1080.0, &spectrum_of(96, 1.0), &p);
+        compose_bars(&mut b, 1920.0, 1080.0, &spectrum_of(96, 1.0), &p);
+        // Deterministic (no time/RNG state).
+        assert_eq!(a.bars, b.bars);
+        // Both palette colours appear, and neighbours mostly differ.
+        let reds = a.bars.iter().filter(|s| s.color[0] > 0.5).count();
+        let blues = a.bars.iter().filter(|s| s.color[2] > 0.5).count();
+        assert!(reds > 0 && blues > 0, "both colours must appear");
+        let top: Vec<[f32; 3]> = a
+            .bars
+            .iter()
+            .filter(|s| s.edge == Edge::Top)
+            .map(|s| s.color)
+            .collect();
+        let differing = top.windows(2).filter(|w| w[0] != w[1]).count();
+        // A random 2-colour assignment differs about half the time; require
+        // "often" (well above a rare collision) to prove it is not a flat block.
+        assert!(
+            differing > top.len() / 4,
+            "adjacent bars should vary ({differing}/{})",
+            top.len()
         );
-        compose_bars(&mut loud_over, 1920.0, 1080.0, &spectrum_of(96, 1.0), &out);
-        assert_eq!(loud_inside.bars.len(), loud_over.bars.len());
-        // `length` is the growth, so it is identical whether the floor is inward
-        // or outward: the overhang only shifts *where* the bar starts, which is
-        // represented by the renderer geometry, not by `length`.
-        assert_eq!(loud_inside.bars.len(), loud_over.bars.len());
-        let mut compared = 0;
-        for (a, b) in loud_inside.bars.iter().zip(&loud_over.bars) {
-            // A bar whose tip is pinned at the edge by the outward floor
-            // (floor + grow <= 0) renders as a flat outward stub of `|floor|`;
-            // skip those, they are a deliberate clamp, not a growth change.
-            if b.length() <= overhang_px + 0.05 {
-                continue;
-            }
-            compared += 1;
-            assert!(
-                (a.length() - b.length()).abs() < 0.05,
-                "growth changed: {} vs {}",
-                a.length(),
-                b.length()
-            );
+    }
+
+    #[test]
+    fn color_mode_by_position_top_and_bottom_differ() {
+        let p = BarsParams {
+            palette: two_colors(),
+            color_mode: BarColorMode::ByPosition,
+            ..params()
+        };
+        let mut frame = BarsFrame::new();
+        compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 1.0), &p);
+        let top = frame
+            .bars
+            .iter()
+            .find(|s| s.edge == Edge::Top)
+            .map(|s| s.color);
+        let bottom = frame
+            .bars
+            .iter()
+            .find(|s| s.edge == Edge::Bottom)
+            .map(|s| s.color);
+        assert_ne!(top, bottom, "top and bottom should use different colours");
+    }
+
+    #[test]
+    fn color_mode_by_position_left_right_is_a_gradient() {
+        let p = BarsParams {
+            palette: two_colors(),
+            color_mode: BarColorMode::ByPosition,
+            ..params()
+        };
+        let mut frame = BarsFrame::new();
+        compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 1.0), &p);
+        // The left edge should not be one flat colour: its bars span a range.
+        let left: Vec<[f32; 3]> = frame
+            .bars
+            .iter()
+            .filter(|s| s.edge == Edge::Left)
+            .map(|s| s.color)
+            .collect();
+        let first = left[0];
+        let last = *left.last().unwrap_or(&first);
+        let diff: f32 = (0..3).map(|i| (first[i] - last[i]).abs()).sum();
+        assert!(diff > 0.3, "left edge should blend between colours: {diff}");
+    }
+
+    #[test]
+    fn color_mode_single_colour_palette_is_safe() {
+        let p = BarsParams {
+            palette: Palette::single([0.3, 0.6, 0.9]),
+            color_mode: BarColorMode::PerBar,
+            ..params()
+        };
+        let mut frame = BarsFrame::new();
+        compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 1.0), &p);
+        assert!(!frame.bars.is_empty());
+        assert!(frame.bars.iter().all(|s| s.color == [0.3, 0.6, 0.9]));
+    }
+
+    #[test]
+    fn color_mode_id_round_trips() {
+        for m in [
+            BarColorMode::Off,
+            BarColorMode::PerBar,
+            BarColorMode::ByPosition,
+        ] {
+            assert_eq!(BarColorMode::from_id(m.id()), Some(m));
         }
-        assert!(compared > 0, "no unclamped bars to compare");
+        assert_eq!(BarColorMode::from_id("acak"), Some(BarColorMode::PerBar));
+        assert_eq!(
+            BarColorMode::from_id("posisi"),
+            Some(BarColorMode::ByPosition)
+        );
+        assert_eq!(BarColorMode::from_id("rainbow"), None);
     }
 
     #[test]
@@ -538,7 +664,6 @@ mod tests {
         let p = BarsParams {
             thickness_px: f32::NAN,
             max_len_frac: f32::NAN,
-            floor_frac: f32::NAN,
             center_profile: f32::NAN,
             beat_response: f32::INFINITY,
             opacity: f32::NAN,

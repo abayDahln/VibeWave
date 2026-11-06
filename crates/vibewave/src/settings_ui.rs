@@ -17,7 +17,7 @@ use crate::audio;
 use crate::config;
 use crate::monitors;
 use crate::settings_state::SharedSettings;
-use vibewave_core::bars::Position;
+use vibewave_core::bars::{BarColorMode, Position};
 use vibewave_core::settings::{to_hex_color, ColorMode, Theme, MONITOR_PRIMARY};
 use vibewave_core::visual::Direction;
 
@@ -56,9 +56,10 @@ pub struct SettingsDto {
     pub bars_position: String,
     pub bars_thickness_px: f32,
     pub bars_max_len_frac: f32,
-    pub bars_floor_frac: f32,
     pub bars_center_profile: f32,
     pub bars_beat_response: f32,
+    /// Bars theme: `off`, `perbar`, or `position`.
+    pub bars_color_mode: String,
 }
 
 /// One entry of the monitor dropdown.
@@ -91,9 +92,9 @@ impl SettingsDto {
             bars_position: live.settings.bars_position.id().to_string(),
             bars_thickness_px: live.settings.bars_thickness_px,
             bars_max_len_frac: live.settings.bars_max_len_frac,
-            bars_floor_frac: live.settings.bars_floor_frac,
             bars_center_profile: live.settings.bars_center_profile,
             bars_beat_response: live.settings.bars_beat_response,
+            bars_color_mode: live.settings.bars_color_mode.id().to_string(),
         }
     }
 }
@@ -237,12 +238,6 @@ fn set_bars_max_len_frac(state: tauri::State<'_, Arc<SharedSettings>>, value: f3
     state.set_bars_max_len_frac(value);
 }
 
-/// Bars theme: baseline offset (may be negative for an outward overhang).
-#[tauri::command]
-fn set_bars_floor_frac(state: tauri::State<'_, Arc<SharedSettings>>, value: f32) {
-    state.set_bars_floor_frac(value);
-}
-
 /// Bars theme: center bias (middle of each edge reacts most), 0–1.
 #[tauri::command]
 fn set_bars_center_profile(state: tauri::State<'_, Arc<SharedSettings>>, value: f32) {
@@ -253,6 +248,21 @@ fn set_bars_center_profile(state: tauri::State<'_, Arc<SharedSettings>>, value: 
 #[tauri::command]
 fn set_bars_beat_response(state: tauri::State<'_, Arc<SharedSettings>>, value: f32) {
     state.set_bars_beat_response(value);
+}
+
+/// Bars theme: how the palette maps onto the bars (`off`, `perbar`, `position`).
+#[tauri::command]
+fn set_bars_color_mode(
+    state: tauri::State<'_, Arc<SharedSettings>>,
+    mode: String,
+) -> Result<(), String> {
+    match BarColorMode::from_id(&mode) {
+        Some(m) => {
+            state.set_bars_color_mode(m);
+            Ok(())
+        }
+        None => Err(format!("unknown bars colour mode '{mode}'")),
+    }
 }
 
 /// Monitors for the dropdown: "Primary monitor" first, then each display.
@@ -353,9 +363,9 @@ pub fn build_app(
             set_bars_position,
             set_bars_thickness,
             set_bars_max_len_frac,
-            set_bars_floor_frac,
             set_bars_center_profile,
             set_bars_beat_response,
+            set_bars_color_mode,
             list_monitors,
             set_monitor,
             set_active,

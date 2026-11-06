@@ -16,7 +16,7 @@ pub mod window;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use vibewave_core::bars::{compose_bars, BarsFrame, BarsParams, SPECTRUM_BINS};
+use vibewave_core::bars::{compose_bars, BarColorMode, BarsFrame, BarsParams, SPECTRUM_BINS};
 use vibewave_core::compose::{compose, ComposeParams, FrameInput, GlowFrame};
 use vibewave_core::envelope::BandEnvelopes;
 use vibewave_core::geometry::{overlay_rect, pick_monitor, scale_px, Rect as CoreRect};
@@ -250,14 +250,22 @@ pub fn run(
                 // A failed read keeps the previous spectrum. The bars module has
                 // its own attack/release feel, so no glow envelope is applied.
                 levels.load_spectrum(&mut spectrum);
+                // Multi-colour modes need more than one colour; a single custom
+                // colour is expanded into hue-shifted variants so the modes still
+                // do something. Single-colour mode uses the palette as-is.
+                let palette = if current.settings.bars_color_mode == BarColorMode::Off {
+                    current.palette
+                } else {
+                    current.palette.with_at_least(2)
+                };
                 let params = BarsParams {
                     thickness_px: scale_px(current.settings.bars_thickness_px, surface.dpi),
                     max_len_frac: current.settings.bars_max_len_frac,
-                    floor_frac: current.settings.bars_floor_frac,
                     center_profile: current.settings.bars_center_profile,
                     beat_response: current.settings.bars_beat_response,
                     opacity: current.settings.intensity,
-                    palette: current.palette,
+                    palette,
+                    color_mode: current.settings.bars_color_mode,
                     position: current.settings.bars_position,
                 };
                 compose_bars(&mut bars_frame, w, h, &spectrum, &params);
