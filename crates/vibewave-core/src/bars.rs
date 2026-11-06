@@ -331,20 +331,25 @@ pub fn compose_bars(
             if inner <= 0.0 {
                 continue;
             }
-            // A rounded bar is a pill: radius = half the width, but never more
-            // than half its length, so very short bars stay well-formed.
-            let radius = if params.rounded {
-                (bar_w * 0.5).min(inner * 0.5)
-            } else {
-                0.0
-            };
             let color = bar_color(&palette, params.color_mode, edge, i, t_pos);
+            // Geometry: square corners by default; with `rounded`, a pill that
+            // becomes a **dot** when the bar shrinks to roughly its own width.
+            let (inner, thickness, radius) = if !params.rounded {
+                (inner, bar_w, 0.0)
+            } else if inner < bar_w {
+                // Too short to read as a bar: draw a circle of diameter `bar_w`
+                // anchored at the edge. A square rect with radius = half its side
+                // is a perfect circle, so no new renderer primitive is needed.
+                (bar_w, bar_w, bar_w * 0.5)
+            } else {
+                (inner, bar_w, bar_w * 0.5)
+            };
             frame.bars.push(BarSegment {
                 edge,
                 pos: i as f32 * slot + inset,
                 outer: 0.0,
                 inner,
-                thickness: bar_w,
+                thickness,
                 radius,
                 opacity,
                 color,
@@ -667,6 +672,60 @@ mod tests {
         for (x, y) in a.bars.iter().zip(&b.bars) {
             assert_eq!(x.inner, y.inner);
             assert_eq!(x.pos, y.pos);
+        }
+    }
+
+    #[test]
+    fn rounded_small_bars_become_dots() {
+        // A quiet bar (level just above zero) would be a squat rectangle; with
+        // rounded on it must become a circle of diameter = bar width.
+        let round = BarsParams {
+            rounded: true,
+            center_profile: 0.0,
+            ..params()
+        };
+        let mut frame = BarsFrame::new();
+        compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 0.001), &round);
+        let dots: Vec<&BarSegment> = frame
+            .bars
+            .iter()
+            .filter(|s| (s.length() - s.thickness).abs() < 0.01)
+            .collect();
+        assert!(!dots.is_empty(), "quiet bars should render as dots");
+        for seg in dots {
+            // A dot is a circle: square span, radius = half the side.
+            assert!((seg.radius - seg.thickness * 0.5).abs() < 0.01, "{seg:?}");
+        }
+    }
+
+    #[test]
+    fn rounded_dots_have_a_minimum_size() {
+        // Even at near-zero level the dot should keep the bar's width, so it is
+        // visible rather than vanishing to a sub-pixel speck.
+        let round = BarsParams {
+            rounded: true,
+            thickness_px: 6.0,
+            ..params()
+        };
+        let mut frame = BarsFrame::new();
+        compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 0.0001), &round);
+        for seg in &frame.bars {
+            assert!(seg.length() >= seg.thickness - 0.01, "{seg:?}");
+        }
+    }
+
+    #[test]
+    fn square_bars_never_become_dots() {
+        let square = BarsParams {
+            rounded: false,
+            ..params()
+        };
+        let mut frame = BarsFrame::new();
+        compose_bars(&mut frame, 1920.0, 1080.0, &spectrum_of(96, 0.001), &square);
+        assert!(frame.bars.iter().all(|s| s.radius == 0.0));
+        // Square bars keep their short length (no dot snapping).
+        for seg in &frame.bars {
+            assert!(seg.length() <= seg.thickness + 0.01, "{seg:?}");
         }
     }
 
