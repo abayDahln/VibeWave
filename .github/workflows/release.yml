@@ -1,0 +1,78 @@
+# Release: build the Windows NSIS installer and publish a GitHub Release.
+#
+# Triggered by pushing a version tag (e.g. `v0.1.0`). The tauri-action builds
+# the app in release mode, runs the NSIS bundler, creates the GitHub Release,
+# and uploads the installer as a release asset.
+#
+# The tag version must match `version` in crates/vibewave/tauri.conf.json and
+# [workspace.package].version in Cargo.toml; the action reads the app version
+# from tauri.conf.json to name the release.
+#
+# Manual runs are also supported via Actions ▸ Release ▸ Run workflow.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# tauri-action needs write access to create the release and upload assets.
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: build Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Keep the release build incremental across runs. Separate key from CI
+      # so the release profile cache is not evicted by test builds. Runs before
+      # the CLI install so tauri-cli's dependencies come from the cache.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          key: release
+
+      # The Tauri CLI is installed from crates.io here rather than pulled in
+      # by tauri-action's implicit `npm install -g` fallback. This project has
+      # no package.json, so spelling out the toolchain keeps the build
+      # explicit and traceable. `cargo tauri` is also how the app is built
+      # locally (see README).
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      # Builds and bundles in one step. No Node/frontend step is needed: the
+      # UI is a static `frontendDist` directory (crates/vibewave/ui), not a
+      # compiled frontend.
+      #
+      # projectPath points the action at the crate that holds tauri.conf.json,
+      # because the Tauri crate is not at the repo root (it lives under
+      # crates/vibewave). tauriScript tells the action to invoke the CLI we
+      # just installed via cargo instead of guessing from a package.json.
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/vibewave
+          tauriScript: cargo tauri
+          tagName: v__VERSION__
+          releaseName: "VibeWave v__VERSION__"
+          releaseBody: |
+            Download the `.exe` installer below and run it.
+
+            The installer lets you choose a per-user or per-machine install.
+            After installing, VibeWave starts with Windows automatically
+            (toggle it any time from the tray menu: "Run on startup").
+          releaseDraft: true
+          prerelease: false
